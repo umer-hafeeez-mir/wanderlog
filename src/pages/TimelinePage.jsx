@@ -117,13 +117,20 @@ function MomentMenu({ moment, user, onDelete, onClose }) {
     } catch { onClose() }
   }
 
-  function shareLink() {
+  function shareWhatsApp() {
+    const text = encodeURIComponent('Check out this moment on Wanderlog! ' + window.location.href)
+    window.open('https://wa.me/?text=' + text, '_blank')
+    onClose()
+  }
+
+  function copyLink() {
     navigator.clipboard?.writeText(window.location.href)
     onClose()
   }
 
   const menuItems = [
-    { icon: '🔗', label: 'Share link', action: shareLink },
+    { icon: '💬', label: 'Share on WhatsApp', action: shareWhatsApp },
+    { icon: '🔗', label: 'Copy link', action: copyLink },
     ...(images.length > 0 ? [{ icon: '💾', label: 'Save photo to phone', action: () => savePhoto(images[0].url) }] : []),
     ...(isOwner ? [{ icon: '🗑️', label: 'Delete moment', action: () => { onDelete(moment); onClose() }, danger: true }] : []),
   ]
@@ -534,10 +541,49 @@ export function TimelinePage() {
         </div>
       ) : (
         <div style={s.feed}>
-          {activeSlug === 'today' && (
+          {/* Trip Hero */}
+          {activeSlug === 'today' ? (
             <div style={{ textAlign: 'center', padding: '20px 0 8px' }}>
               <div style={{ fontSize: 12, color: '#9a9088', letterSpacing: '0.1em', textTransform: 'uppercase' }}>{format(new Date(), 'EEEE, MMMM d')}</div>
               <div style={{ fontFamily: 'Georgia, serif', fontSize: 22, marginTop: 4 }}>Today's Moments</div>
+            </div>
+          ) : activeTrip?.cover ? (
+            <div style={{ position: 'relative', height: 180, overflow: 'hidden', marginBottom: 8 }}>
+              <img src={activeTrip.cover} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+              <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, transparent 40%, rgba(0,0,0,0.6))', display: 'flex', alignItems: 'flex-end', padding: 16 }}>
+                <div style={{ color: '#fff' }}>
+                  <div style={{ fontFamily: 'Georgia, serif', fontSize: 22, fontWeight: 700 }}>{activeTrip.emoji} {activeTrip.label}</div>
+                  <div style={{ fontSize: 12, opacity: 0.8, marginTop: 2 }}>{visibleMoments.length} moments</div>
+                </div>
+                {user && (
+                  <label style={{ marginLeft: 'auto', background: 'rgba(255,255,255,0.2)', border: '1px solid rgba(255,255,255,0.4)', borderRadius: 8, padding: '6px 12px', fontSize: 12, color: '#fff', cursor: 'pointer', backdropFilter: 'blur(4px)' }}>
+                    📷 Change cover
+                    <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => {
+                      const file = e.target.files[0]
+                      if (!file) return
+                      const reader = new FileReader()
+                      reader.onload = ev => setTrips(ts => ts.map(t => t.slug === activeSlug ? { ...t, cover: ev.target.result } : t))
+                      reader.readAsDataURL(file)
+                    }} />
+                  </label>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div style={{ padding: '20px 0 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ fontFamily: 'Georgia, serif', fontSize: 22 }}>{activeTrip?.emoji} {activeTrip?.label}</div>
+              {user && (
+                <label style={{ background: '#f7f3ee', border: '1px solid #ece8e2', borderRadius: 8, padding: '6px 12px', fontSize: 12, color: '#6b6258', cursor: 'pointer' }}>
+                  📷 Add cover
+                  <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => {
+                    const file = e.target.files[0]
+                    if (!file) return
+                    const reader = new FileReader()
+                    reader.onload = ev => setTrips(ts => ts.map(t => t.slug === activeSlug ? { ...t, cover: ev.target.result } : t))
+                    reader.readAsDataURL(file)
+                  }} />
+                </label>
+              )}
             </div>
           )}
           {loading ? (
