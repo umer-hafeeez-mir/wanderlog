@@ -11,7 +11,8 @@ const DEFAULT_TRIPS = [
 ]
 const UPCOMING_TAB = { slug: 'upcoming', label: 'Upcoming', emoji: '🗓️', fixed: true }
 const EMOJI_OPTIONS = ['✈️','🌍','🏔️','🏖️','🏙️','🗺️','🎒','🚂','🛳️','🏕️','🍜','☕','🎭','📸','🌅','⛩️','🕌','🏛️','🌴','❄️']
-const REACTIONS = ['🫶','😍','🔥','😂','😮','👏','🙌','💯']
+const REACTIONS = ['❤️','😍','🔥','😂','😮','👏','🙌','💯']
+const QUICK_REACTIONS = ['❤️','😍','🔥','😂']
 
 const s = {
   page:      { fontFamily: 'Inter, sans-serif', background: '#f7f3ee', minHeight: '100vh', color: '#1a1612' },
@@ -40,7 +41,45 @@ function Avatar({ user }) {
   return <div style={s.avatar}>{initial}</div>
 }
 
-function PhotoGrid({ images }) {
+// ── Lightbox ─────────────────────────────────────────────────
+function Lightbox({ images, startIndex, onClose }) {
+  const [index, setIndex] = useState(startIndex)
+  useEffect(() => {
+    function onKey(e) {
+      if (e.key === 'Escape') onClose()
+      if (e.key === 'ArrowRight') setIndex(i => Math.min(i + 1, images.length - 1))
+      if (e.key === 'ArrowLeft') setIndex(i => Math.max(i - 1, 0))
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [images.length, onClose])
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.95)', zIndex: 600, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <button onClick={onClose} style={{ position: 'absolute', top: 16, right: 16, background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 36, height: 36, borderRadius: '50%', fontSize: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}>✕</button>
+      {images.length > 1 && (
+        <div style={{ position: 'absolute', top: 20, left: '50%', transform: 'translateX(-50%)', color: 'rgba(255,255,255,0.7)', fontSize: 13 }}>{index + 1} / {images.length}</div>
+      )}
+      {index > 0 && (
+        <button onClick={e => { e.stopPropagation(); setIndex(i => i - 1) }} style={{ position: 'absolute', left: 16, background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 40, height: 40, borderRadius: '50%', fontSize: 24, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
+      )}
+      <img onClick={e => e.stopPropagation()} src={images[index].url} alt=""
+        style={{ maxWidth: '92vw', maxHeight: '88vh', objectFit: 'contain', borderRadius: 8, boxShadow: '0 8px 40px rgba(0,0,0,0.6)' }} />
+      {index < images.length - 1 && (
+        <button onClick={e => { e.stopPropagation(); setIndex(i => i + 1) }} style={{ position: 'absolute', right: 16, background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 40, height: 40, borderRadius: '50%', fontSize: 24, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>›</button>
+      )}
+      {images.length > 1 && (
+        <div style={{ position: 'absolute', bottom: 20, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 6 }}>
+          {images.map((_, i) => (
+            <div key={i} onClick={e => { e.stopPropagation(); setIndex(i) }} style={{ width: 6, height: 6, borderRadius: '50%', background: i === index ? '#fff' : 'rgba(255,255,255,0.35)', cursor: 'pointer' }} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function PhotoGrid({ images, onPhotoClick }) {
   if (!images?.length) return null
   const shown = images.slice(0, 4)
   const extra = images.length - 4
@@ -50,7 +89,7 @@ function PhotoGrid({ images }) {
   return (
     <div style={{ display: 'grid', gap: 2, ...grid }}>
       {shown.map((img, i) => (
-        <div key={img.id ?? i} style={{ position: 'relative', overflow: 'hidden', ...(shown.length === 3 && i === 0 ? { gridRow: '1 / 3' } : {}) }}>
+        <div key={img.id ?? i} onClick={() => onPhotoClick(i)} style={{ position: 'relative', overflow: 'hidden', cursor: 'pointer', ...(shown.length === 3 && i === 0 ? { gridRow: '1 / 3' } : {}) }}>
           <img src={img.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
           {i === 3 && extra > 0 && (
             <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 22, fontWeight: 700 }}>+{extra}</div>
@@ -167,7 +206,7 @@ function ReactionBar({ moment, user, onReact }) {
   const [showPicker, setShowPicker] = useState(false)
   const reactions = moment.reactions ?? []
 
-  // Group reactions by emoji
+  // Group existing reactions by emoji with counts
   const grouped = REACTIONS.reduce((acc, emoji) => {
     const count = reactions.filter(r => r.emoji === emoji).length
     const mine = reactions.some(r => r.emoji === emoji && r.user_id === user?.id)
@@ -176,40 +215,58 @@ function ReactionBar({ moment, user, onReact }) {
   }, [])
 
   return (
-    <div style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', borderTop: '1px solid #f5f0eb', position: 'relative' }}>
-      {/* Existing reactions */}
-      {grouped.map(r => (
-        <button key={r.emoji} onClick={() => user && onReact(moment.id, r.emoji)} style={{ background: r.mine ? '#fef3ee' : '#f7f3ee', border: `1px solid ${r.mine ? '#b85c3a' : '#ece8e2'}`, borderRadius: 100, padding: '4px 10px', fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, color: r.mine ? '#b85c3a' : '#6b6258' }}>
-          {r.emoji} <span style={{ fontSize: 12 }}>{r.count}</span>
-        </button>
-      ))}
+    <div style={{ padding: '8px 14px', borderTop: '1px solid #f5f0eb', position: 'relative' }}>
+      {/* Quick reaction buttons — always visible */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        {QUICK_REACTIONS.map(emoji => {
+          const existing = grouped.find(r => r.emoji === emoji)
+          const mine = existing?.mine ?? false
+          const count = existing?.count ?? 0
+          return (
+            <button key={emoji} onClick={() => user && onReact(moment.id, emoji)}
+              style={{ background: mine ? '#fef3ee' : '#f7f3ee', border: `1px solid ${mine ? '#b85c3a' : '#ece8e2'}`, borderRadius: 100, padding: '5px 11px', fontSize: 15, cursor: user ? 'pointer' : 'default', display: 'flex', alignItems: 'center', gap: 4, color: mine ? '#b85c3a' : '#6b6258', transition: 'all 0.15s' }}>
+              {emoji}{count > 0 && <span style={{ fontSize: 12, fontWeight: 600 }}>{count}</span>}
+            </button>
+          )
+        })}
 
-      {/* Add reaction button */}
-      {user && (
-        <div style={{ position: 'relative' }}>
-          <button onClick={() => setShowPicker(p => !p)} style={{ background: '#f7f3ee', border: '1px solid #ece8e2', borderRadius: 100, padding: '4px 10px', fontSize: 16, cursor: 'pointer', color: '#9a9088' }}>
-            ＋
+        {/* More reactions picker */}
+        {user && (
+          <div style={{ position: 'relative', marginLeft: 2 }}>
+            <button onClick={() => setShowPicker(p => !p)} style={{ background: '#f7f3ee', border: '1px solid #ece8e2', borderRadius: 100, padding: '5px 10px', fontSize: 14, cursor: 'pointer', color: '#9a9088' }}>
+              ＋
+            </button>
+            {showPicker && (
+              <div style={{ position: 'absolute', bottom: 36, left: 0, background: '#fff', borderRadius: 14, boxShadow: '0 4px 20px rgba(0,0,0,0.15)', padding: 10, display: 'flex', gap: 4, flexWrap: 'wrap', width: 220, zIndex: 200 }}>
+                {REACTIONS.map(emoji => (
+                  <button key={emoji} onClick={() => { onReact(moment.id, emoji); setShowPicker(false) }}
+                    style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', borderRadius: 8, padding: 4, width: 38, height: 38, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Any extra reactions not in QUICK_REACTIONS */}
+        {grouped.filter(r => !QUICK_REACTIONS.includes(r.emoji)).map(r => (
+          <button key={r.emoji} onClick={() => user && onReact(moment.id, r.emoji)}
+            style={{ background: r.mine ? '#fef3ee' : '#f7f3ee', border: `1px solid ${r.mine ? '#b85c3a' : '#ece8e2'}`, borderRadius: 100, padding: '5px 11px', fontSize: 15, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, color: r.mine ? '#b85c3a' : '#6b6258' }}>
+            {r.emoji} <span style={{ fontSize: 12, fontWeight: 600 }}>{r.count}</span>
           </button>
-          {showPicker && (
-            <div style={{ position: 'absolute', bottom: 36, left: 0, background: '#fff', borderRadius: 14, boxShadow: '0 4px 20px rgba(0,0,0,0.15)', padding: 10, display: 'flex', gap: 6, flexWrap: 'wrap', width: 220, zIndex: 200 }}>
-              {REACTIONS.map(emoji => (
-                <button key={emoji} onClick={() => { onReact(moment.id, emoji); setShowPicker(false) }}
-                  style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', borderRadius: 8, padding: 4, width: 38, height: 38, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  {emoji}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+        ))}
+      </div>
     </div>
   )
 }
 
 // ── Moment Card ───────────────────────────────────────────────
 function MomentCard({ moment, user, onReact, onMenuOpen }) {
+  const [lightboxIndex, setLightboxIndex] = useState(null)
   const time = format(parseISO(moment.created_at), 'h:mm a')
   const displayName = user?.user_metadata?.full_name ?? user?.email ?? 'Traveller'
+  const images = moment.moment_images ?? []
 
   return (
     <div style={s.card}>
@@ -232,7 +289,8 @@ function MomentCard({ moment, user, onReact, onMenuOpen }) {
       {moment.location && <div style={{ padding: '0 14px 10px', fontSize: 12, color: '#9a9088', display: 'flex', alignItems: 'center', gap: 4 }}>📍 {moment.location}</div>}
 
       {/* Photos */}
-      <PhotoGrid images={moment.moment_images ?? []} />
+      <PhotoGrid images={images} onPhotoClick={setLightboxIndex} />
+      {lightboxIndex !== null && <Lightbox images={images} startIndex={lightboxIndex} onClose={() => setLightboxIndex(null)} />}
 
       {/* Reactions */}
       <ReactionBar moment={moment} user={user} onReact={onReact} />
