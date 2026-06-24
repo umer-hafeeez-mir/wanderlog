@@ -11,7 +11,7 @@ export function useMoments(tripId) {
     const { data, error } = await supabase
       .from('moments')
       .select(`
-        id, caption, location, created_at,
+        id, user_id, caption, location, created_at,
         moment_images (id, url, position),
         reactions (id, user_id, emoji)
       `)
