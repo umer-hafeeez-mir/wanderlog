@@ -170,8 +170,8 @@ function AddModal({ user, onClose, onAdd, loading }) {
           )}
         </div>
 
-        <button onClick={() => caption.trim() && onAdd({ caption: caption.trim(), location: location.trim(), imageFiles: files })}
-          disabled={loading || !caption.trim()} style={{ ...s.submitBtn, opacity: loading ? 0.7 : 1 }}>
+        <button onClick={() => onAdd({ caption: caption.trim(), location: location.trim(), imageFiles: files })}
+          disabled={loading} style={{ ...s.submitBtn, opacity: loading ? 0.7 : 1 }}>
           {loading ? 'Posting…' : 'Post Moment'}
         </button>
       </div>
