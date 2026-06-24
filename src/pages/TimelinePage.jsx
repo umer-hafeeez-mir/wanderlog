@@ -195,7 +195,7 @@ function Comments({ momentId, user }) {
           )}
         </div>
       ) : (
-        <div style={{ fontSize: 12, color: '#9a9088', marginTop: 8 }}>Sign in to comment</div>
+        <div style={{ fontSize: 12, color: '#c8c0b8', marginTop: 8, fontStyle: 'italic' }}>Sign in to react or comment</div>
       )}
     </div>
   )
@@ -224,13 +224,15 @@ function ReactionBar({ moment, user, onReact }) {
           const count = existing?.count ?? 0
           return (
             <button key={emoji} onClick={() => user && onReact(moment.id, emoji)}
-              style={{ background: mine ? '#fef3ee' : '#f7f3ee', border: `1px solid ${mine ? '#b85c3a' : '#ece8e2'}`, borderRadius: 100, padding: '5px 11px', fontSize: 15, cursor: user ? 'pointer' : 'default', display: 'flex', alignItems: 'center', gap: 4, color: mine ? '#b85c3a' : '#6b6258', transition: 'all 0.15s' }}>
+              disabled={!user}
+              title={!user ? 'Sign in to react' : ''}
+              style={{ background: mine ? '#fef3ee' : '#f7f3ee', border: `1px solid ${mine ? '#b85c3a' : '#ece8e2'}`, borderRadius: 100, padding: '5px 11px', fontSize: 15, cursor: user ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', gap: 4, color: mine ? '#b85c3a' : user ? '#6b6258' : '#c8c0b8', transition: 'all 0.15s', opacity: user ? 1 : 0.5 }}>
               {emoji}{count > 0 && <span style={{ fontSize: 12, fontWeight: 600 }}>{count}</span>}
             </button>
           )
         })}
 
-        {/* More reactions picker */}
+        {/* More reactions picker — signed in only */}
         {user && (
           <div style={{ position: 'relative', marginLeft: 2 }}>
             <button onClick={() => setShowPicker(p => !p)} style={{ background: '#f7f3ee', border: '1px solid #ece8e2', borderRadius: 100, padding: '5px 10px', fontSize: 14, cursor: 'pointer', color: '#9a9088' }}>
@@ -277,9 +279,11 @@ function MomentCard({ moment, user, onReact, onMenuOpen }) {
           <div style={{ fontSize: 13, fontWeight: 600 }}>{displayName}</div>
           <div style={{ fontSize: 11, color: '#9a9088' }}>{time}</div>
         </div>
-        <button onClick={() => onMenuOpen(moment)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#9a9088', padding: '4px 8px', borderRadius: 8, lineHeight: 1 }}>
-          •••
-        </button>
+        {user && (
+          <button onClick={() => onMenuOpen(moment)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#9a9088', padding: '4px 8px', borderRadius: 8, lineHeight: 1 }}>
+            •••
+          </button>
+        )}
       </div>
 
       {/* Caption */}
