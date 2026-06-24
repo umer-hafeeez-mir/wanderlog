@@ -6,9 +6,11 @@ import { useMoments } from '../hooks/useMoments'
 import { useAuth } from '../hooks/useAuth'
 
 const TRIPS = {
-  turkey:       { id: 'trip-turkey',   name: 'Turkey',       dateRange: 'Dates TBC', emoji: '🇹🇷' },
-  saudi:        { id: 'trip-saudi',    name: 'Saudi Arabia', dateRange: 'Dates TBC', emoji: '🇸🇦' },
+  turkey: { id: 'd93cebae-a4c1-4f71-842c-88410af4450a', name: 'Turkey',       dateRange: 'Dates TBC', emoji: '🇹🇷' },
+  saudi:  { id: 'ff91d8b7-516c-4a87-9bdf-5bac2b398f93', name: 'Saudi Arabia', dateRange: 'Dates TBC', emoji: '🇸🇦' },
 }
+
+const TODAY_TRIP_ID = '6e7696ea-b754-49a3-ac42-213bc48f459e'
 
 const TABS = [
   { id: 'today',    label: 'Today',        emoji: '📍' },
@@ -24,7 +26,7 @@ export function TimelinePage() {
   const [posting, setPosting] = useState(false)
   const [toast, setToast] = useState('')
 
-  const tripId = activeTab === 'today' ? 'trip-today'
+  const tripId = activeTab === 'today' ? TODAY_TRIP_ID
                : activeTab === 'turkey' ? TRIPS.turkey.id
                : activeTab === 'saudi' ? TRIPS.saudi.id
                : null
