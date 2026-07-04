@@ -1,4 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
+import { DayRecap } from '../components/DayRecap'
+import { TripBook } from '../components/TripBook'
 import { format, parseISO, isToday } from 'date-fns'
 import { supabase } from '../lib/supabase'
 import { useMoments } from '../hooks/useMoments'
@@ -388,9 +390,31 @@ function MomentMenu({ moment, user, onDelete, onClose }) {
 function AddMomentModal({ onClose, onAdd, loading }) {
   const [caption, setCaption] = useState('')
   const [location, setLocation] = useState('')
+  const [coords, setCoords] = useState(null)
+  const [gpsLoading, setGpsLoading] = useState(false)
   const [files, setFiles] = useState([])
   const [previews, setPreviews] = useState([])
   const fileRef = useRef()
+
+  function getLocation() {
+    setGpsLoading(true)
+    navigator.geolocation?.getCurrentPosition(
+      pos => {
+        setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude })
+        // Reverse geocode using free API
+        fetch(`https://nominatim.openstreetmap.org/reverse?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&format=json`)
+          .then(r => r.json())
+          .then(d => {
+            const city = d.address?.city || d.address?.town || d.address?.village || d.address?.county || ''
+            const country = d.address?.country || ''
+            if (city || country) setLocation([city, country].filter(Boolean).join(', '))
+          })
+          .catch(() => {})
+          .finally(() => setGpsLoading(false))
+      },
+      () => setGpsLoading(false)
+    )
+  }
 
   function handleFiles(e) {
     Array.from(e.target.files).forEach(file => {
@@ -429,7 +453,14 @@ function AddMomentModal({ onClose, onAdd, loading }) {
 
         <div style={{ marginBottom: 20 }}>
           <label style={{ fontSize: 10, fontFamily: fonts.ui, fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: C.dim, display: 'block', marginBottom: 4 }}>Location</label>
-          <input type="text" value={location} onChange={e => setLocation(e.target.value)} placeholder="Where are you?" style={{ ...inputStyle }} />
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+            <input type="text" value={location} onChange={e => setLocation(e.target.value)} placeholder="Where are you?" style={{ ...inputStyle, flex: 1 }} />
+            <button onClick={getLocation} disabled={gpsLoading} title="Use my location"
+              style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', padding: '4px', opacity: gpsLoading ? 0.4 : coords ? 1 : 0.6, color: coords ? C.rust : C.dim, flexShrink: 0 }}>
+              {gpsLoading ? '⏳' : '📍'}
+            </button>
+          </div>
+          {coords && <div style={{ fontSize: 10, fontFamily: fonts.ui, color: C.sage, marginTop: 3 }}>📍 Location captured</div>}
         </div>
 
         <div style={{ marginBottom: 24 }}>
@@ -454,7 +485,7 @@ function AddMomentModal({ onClose, onAdd, loading }) {
           )}
         </div>
 
-        <button onClick={() => onAdd({ caption: caption.trim(), location: location.trim(), imageFiles: files })}
+        <button onClick={() => onAdd({ caption: caption.trim(), location: location.trim(), latitude: coords?.lat, longitude: coords?.lng, imageFiles: files })}
           disabled={loading}
           style={{ width: '100%', background: loading ? C.dim : C.night, color: '#fff', border: 'none', borderRadius: 14, padding: '15px', fontSize: 15, fontWeight: 600, fontFamily: fonts.ui, cursor: loading ? 'not-allowed' : 'pointer', letterSpacing: '0.02em', transition: 'background 0.2s' }}>
           {loading ? 'Posting…' : 'Post moment'}
@@ -671,6 +702,8 @@ export function TimelinePage() {
   const [menuMoment, setMenuMoment] = useState(null)
   const [deleteMoment, setDeleteMoment] = useState(null)
   const [posting, setPosting] = useState(false)
+  const [recapDay, setRecapDay] = useState(null)
+  const [showTripBook, setShowTripBook] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [toast, setToast] = useState('')
 
@@ -710,7 +743,7 @@ export function TimelinePage() {
     if (!user) return
     setPosting(true)
     try {
-      await addMoment({ ...payload, userId: user.id, userName: user.user_metadata?.full_name ?? user.email, userAvatar: user.user_metadata?.avatar_url ?? null })
+      await addMoment({ ...payload, userId: user.id, userName: user.user_metadata?.full_name ?? user.email, userAvatar: user.user_metadata?.avatar_url ?? null, latitude: payload.latitude, longitude: payload.longitude })
       setShowAddMoment(false)
       showToast('Moment posted ✨')
     } catch(e) { showToast('Error: ' + e.message) }
@@ -857,6 +890,20 @@ export function TimelinePage() {
             </div>
           )}
 
+          {/* Trip actions bar */}
+          {activeSlug !== 'today' && visibleMoments.length > 0 && (
+            <div style={{ display: 'flex', gap: 8, padding: '12px 0', overflowX: 'auto', scrollbarWidth: 'none' }}>
+              {[
+                { label: '📄 Trip book', action: () => setShowTripBook(true) },
+              ].map(btn => (
+                <button key={btn.label} onClick={btn.action}
+                  style={{ background: 'rgba(255,255,255,0.7)', border: `1px solid ${C.mist}`, borderRadius: 100, padding: '7px 16px', fontSize: 12, fontFamily: fonts.ui, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', color: C.ink, flexShrink: 0 }}>
+                  {btn.label}
+                </button>
+              ))}
+            </div>
+          )}
+
           {/* Moments */}
           {loading ? (
             <div style={{ textAlign: 'center', padding: '60px 0', color: C.dim, fontFamily: fonts.ui, fontStyle: 'italic' }}>Loading…</div>
@@ -881,7 +928,10 @@ export function TimelinePage() {
                     <div style={{ fontSize: 8, fontFamily: fonts.ui, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', opacity: 0.7, marginTop: 2 }}>{day.split(' ')[0]}</div>
                   </div>
                   <div style={{ flex: 1, height: 1, background: C.mist }} />
-                  <div style={{ fontSize: 11, fontFamily: fonts.ui, color: C.dim }}>{grouped[day].length} moment{grouped[day].length !== 1 ? 's' : ''}</div>
+                  <button onClick={() => setRecapDay(day)}
+                    style={{ fontSize: 11, fontFamily: fonts.ui, color: C.rust, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, padding: '2px 0', whiteSpace: 'nowrap' }}>
+                    {grouped[day].length} moment{grouped[day].length !== 1 ? 's' : ''} · Recap ↗
+                  </button>
                 </div>
                 {grouped[day].map(m => (
                   <MomentCard key={m.id} moment={m} user={user} onReact={handleReact} onMenuOpen={setMenuMoment} />
@@ -908,6 +958,23 @@ export function TimelinePage() {
       {showMembers && <MembersPanel trips={trips} user={user} onClose={() => setShowMembers(false)} />}
       {menuMoment && <MomentMenu moment={menuMoment} user={user} onDelete={m => { setMenuMoment(null); setDeleteMoment(m) }} onClose={() => setMenuMoment(null)} />}
       {deleteMoment && <DeleteConfirmModal onClose={() => setDeleteMoment(null)} onConfirm={handleDelete} loading={deleting} />}
+      {recapDay && (
+        <DayRecap
+          day={recapDay}
+          moments={grouped[recapDay] ?? []}
+          tripName={activeTrip?.label ?? 'Trip'}
+          tripEmoji={activeTrip?.emoji ?? '✈️'}
+          onClose={() => setRecapDay(null)}
+        />
+      )}
+      {showTripBook && (
+        <TripBook
+          moments={visibleMoments}
+          tripName={activeTrip?.label ?? 'Trip'}
+          tripEmoji={activeTrip?.emoji ?? '✈️'}
+          onClose={() => setShowTripBook(false)}
+        />
+      )}
       {joinState && <JoinBanner joinState={joinState} onClose={() => window.location.reload()} />}
 
       {/* ── Toast ── */}
