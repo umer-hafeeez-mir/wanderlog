@@ -20,11 +20,15 @@ export function WelcomePage({ onSignIn, loading }) {
       {/* Floating day pills — decorative */}
       <div style={{ position:'fixed', inset:0, zIndex:1, pointerEvents:'none', overflow:'hidden' }}>
         {[
-          { label:'Today', color:'#FF6B6B', top:'12%', left:'8%', delay:'0s' },
-          { label:'Istanbul', color:'#FF9F43', top:'18%', right:'10%', delay:'1.5s' },
-          { label:'Cappadocia', color:'#1DD1A1', top:'55%', left:'5%', delay:'0.8s' },
-          { label:'Jul 13', color:'#54A0FF', bottom:'28%', right:'8%', delay:'2s' },
-          { label:'Family', color:'#FF9FF3', bottom:'18%', left:'12%', delay:'1.2s' },
+          { label:'Umer', color:'#FF6B6B', top:'10%', left:'6%', delay:'0s' },
+          { label:'Istanbul 🕌', color:'#FF9F43', top:'16%', right:'8%', delay:'1.5s' },
+          { label:'Adil', color:'#1DD1A1', top:'52%', left:'4%', delay:'0.8s' },
+          { label:'Sarah', color:'#54A0FF', top:'30%', right:'5%', delay:'2.2s' },
+          { label:'Iesa', color:'#FF9FF3', bottom:'30%', right:'9%', delay:'1s' },
+          { label:'Cappadocia 🎈', color:'#FECA57', bottom:'20%', left:'6%', delay:'1.8s' },
+          { label:'Anas', color:'#5F27CD', top:'68%', right:'6%', delay:'0.4s' },
+          { label:'Shifa', color:'#EE5A24', top:'42%', left:'3%', delay:'2.5s' },
+          { label:'Saba', color:'#48DBFB', bottom:'12%', right:'14%', delay:'1.3s' },
         ].map((p, i) => (
           <div key={i} style={{ position:'absolute', top:p.top, bottom:p.bottom, left:p.left, right:p.right, background:`${p.color}22`, color:p.color, border:`2px solid ${p.color}`, borderRadius:100, padding:'6px 14px', fontSize:13, fontWeight:700, animation:`float 4s ease-in-out ${p.delay} infinite`, opacity:0.7, whiteSpace:'nowrap' }}>
             {p.label}
@@ -49,7 +53,7 @@ export function WelcomePage({ onSignIn, loading }) {
         <div style={{ animation:'fadeUp 0.6s ease both', animationDelay:'0.3s', margin:'48px 0', display:'flex', flexDirection:'column', gap:10, width:'100%', maxWidth:320 }}>
           {[
             { name:'Umer', time:'2:36 PM · Istanbul, Turkey', caption:'First look at the Bosphorus 🌊', color:'#FF6B6B', img:'🕌' },
-            { name:'Ayaan', time:'4:12 PM · Cappadocia', caption:'Hot air balloon ride!!!', color:'#FF9F43', img:'🎈' },
+            { name:'Sarah', time:'4:12 PM · Cappadocia', caption:'Hot air balloon ride was unreal!!!', color:'#54A0FF', img:'🎈' },
           ].map((m, i) => (
             <div key={i} style={{ background:'rgba(255,255,255,0.85)', borderRadius:16, padding:'12px 14px', boxShadow:'0 2px 12px rgba(0,0,0,0.06)', textAlign:'left', backdropFilter:'blur(8px)' }}>
               <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6 }}>
