@@ -122,6 +122,10 @@ function Lightbox({ images, startIndex, onClose }) {
 }
 
 // ── Photo Grid ────────────────────────────────────────────────
+function isVideo(url) {
+  return url && /\.(mp4|mov|webm|ogg|avi)$/i.test(url.split('?')[0])
+}
+
 function PhotoGrid({ images, onPhotoClick }) {
   if (!images?.length) return null
   const shown = images.slice(0, 4)
@@ -132,10 +136,21 @@ function PhotoGrid({ images, onPhotoClick }) {
   return (
     <div style={{ display: 'grid', gap: 2, margin: '0 -20px', ...grid }}>
       {shown.map((img, i) => (
-        <div key={img.id ?? i} onClick={() => onPhotoClick(i)} style={{ position: 'relative', overflow: 'hidden', cursor: 'pointer', ...(shown.length === 3 && i === 0 ? { gridRow: '1 / 3' } : {}) }}>
-          <img src={img.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', transition: 'transform 0.4s ease' }}
-            onMouseEnter={e => e.target.style.transform = 'scale(1.04)'}
-            onMouseLeave={e => e.target.style.transform = 'scale(1)'} />
+        <div key={img.id ?? i} onClick={() => onPhotoClick(i)}
+          style={{ position: 'relative', overflow: 'hidden', cursor: 'pointer', ...(shown.length === 3 && i === 0 ? { gridRow: '1 / 3' } : {}) }}>
+          {isVideo(img.url) ? (
+            <video src={img.url} muted playsInline loop
+              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+          ) : (
+            <img src={img.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', transition: 'transform 0.4s ease' }}
+              onMouseEnter={e => e.target.style.transform = 'scale(1.04)'}
+              onMouseLeave={e => e.target.style.transform = 'scale(1)'} />
+          )}
+          {isVideo(img.url) && (
+            <div style={{ position: 'absolute', top: 10, left: 10, background: 'rgba(0,0,0,0.55)', borderRadius: 8, padding: '3px 8px', fontSize: 11, color: '#fff', fontFamily: fonts.ui, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
+              ▶ VIDEO
+            </div>
+          )}
           {i === 3 && extra > 0 && (
             <div style={{ position: 'absolute', inset: 0, background: 'rgba(13,17,23,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 28, fontFamily: fonts.display, fontWeight: 600 }}>+{extra}</div>
           )}
@@ -387,14 +402,27 @@ function MomentMenu({ moment, user, onDelete, onClose }) {
 }
 
 // ── Add Moment Modal ──────────────────────────────────────────
-function AddMomentModal({ onClose, onAdd, loading }) {
+function AddMomentModal({ onClose, onAdd, loading, initialFiles = [] }) {
   const [caption, setCaption] = useState('')
   const [location, setLocation] = useState('')
   const [coords, setCoords] = useState(null)
   const [gpsLoading, setGpsLoading] = useState(false)
-  const [files, setFiles] = useState([])
+  const [files, setFiles] = useState(initialFiles)
   const [previews, setPreviews] = useState([])
   const fileRef = useRef()
+
+  // Load previews for initialFiles (camera/gallery picks)
+  useEffect(() => {
+    initialFiles.forEach(file => {
+      if (file.type.startsWith('video/')) {
+        setPreviews(p => [...p, { type: 'video', src: URL.createObjectURL(file) }])
+      } else {
+        const r = new FileReader()
+        r.onload = ev => setPreviews(p => [...p, { type: 'image', src: ev.target.result }])
+        r.readAsDataURL(file)
+      }
+    })
+  }, [])
 
   function getLocation() {
     setGpsLoading(true)
@@ -419,9 +447,14 @@ function AddMomentModal({ onClose, onAdd, loading }) {
   function handleFiles(e) {
     Array.from(e.target.files).forEach(file => {
       setFiles(f => [...f, file])
-      const r = new FileReader()
-      r.onload = ev => setPreviews(p => [...p, ev.target.result])
-      r.readAsDataURL(file)
+      if (file.type.startsWith('video/')) {
+        // For video, use object URL as preview
+        setPreviews(p => [...p, { type: 'video', src: URL.createObjectURL(file) }])
+      } else {
+        const r = new FileReader()
+        r.onload = ev => setPreviews(p => [...p, { type: 'image', src: ev.target.result }])
+        r.readAsDataURL(file)
+      }
     })
   }
 
@@ -472,7 +505,7 @@ function AddMomentModal({ onClose, onAdd, loading }) {
             <div style={{ fontSize: 32, marginBottom: 6 }}>📷</div>
             <div style={{ fontSize: 13, fontFamily: fonts.ui, color: C.dim }}>Tap to add photos</div>
           </div>
-          <input ref={fileRef} type="file" multiple accept="image/*" onChange={handleFiles} style={{ display: 'none' }} />
+          <input ref={fileRef} type="file" multiple accept="image/*,video/*" onChange={handleFiles} style={{ display: 'none' }} />
           {previews.length > 0 && (
             <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
               {previews.map((src, i) => (
@@ -702,6 +735,7 @@ export function TimelinePage() {
   const [menuMoment, setMenuMoment] = useState(null)
   const [deleteMoment, setDeleteMoment] = useState(null)
   const [posting, setPosting] = useState(false)
+  const [galleryFiles, setGalleryFiles] = useState([])
   const [recapDay, setRecapDay] = useState(null)
   const [showTripBook, setShowTripBook] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -853,7 +887,16 @@ export function TimelinePage() {
 
       {/* ── Feed ── */}
       {activeSlug !== 'upcoming' && (
-        <div style={{ maxWidth: 560, margin: '0 auto', padding: '0 16px 100px' }}>
+        <div
+          style={{ maxWidth: 560, margin: '0 auto', padding: '0 16px 100px' }}
+          onTouchStart={e => { window._swipeX = e.touches[0].clientX }}
+          onTouchEnd={e => {
+            const diff = window._swipeX - e.changedTouches[0].clientX
+            const allTabs = [...trips.map(t => t.slug), 'upcoming']
+            const idx = allTabs.indexOf(activeSlug)
+            if (diff > 60 && idx < allTabs.length - 1) setActiveSlug(allTabs[idx + 1])
+            if (diff < -60 && idx > 0) setActiveSlug(allTabs[idx - 1])
+          }}>
 
           {/* Trip Hero */}
           {activeSlug === 'today' ? (
@@ -942,18 +985,36 @@ export function TimelinePage() {
         </div>
       )}
 
-      {/* ── FAB ── */}
+      {/* ── FAB — camera + gallery ── */}
       {user && activeSlug !== 'upcoming' && (
-        <button onClick={() => setShowAddMoment(true)}
-          style={{ position: 'fixed', bottom: 28, right: 24, background: C.night, color: C.amber, border: `2px solid ${C.amber}`, borderRadius: '50%', width: 56, height: 56, fontSize: 26, cursor: 'pointer', boxShadow: `0 4px 20px rgba(0,0,0,0.3), 0 0 0 4px ${C.parchment}`, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'transform 0.15s' }}
-          onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.08)'}
-          onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}>
-          ＋
-        </button>
+        <div style={{ position: 'fixed', bottom: 28, right: 20, zIndex: 200, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 10 }}>
+          {/* Gallery button — small */}
+          <label style={{ background: C.parchment, color: C.ink, border: `2px solid ${C.night}`, borderRadius: 100, padding: '8px 16px', fontSize: 12, fontFamily: fonts.ui, fontWeight: 700, cursor: 'pointer', boxShadow: '0 2px 12px rgba(0,0,0,0.15)', display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
+            🖼️ Gallery
+            <input type="file" multiple accept="image/*,video/*" style={{ display: 'none' }}
+              onChange={e => {
+                const picked = Array.from(e.target.files)
+                if (!picked.length) return
+                setGalleryFiles(picked)
+                setShowAddMoment(true)
+              }} />
+          </label>
+          {/* Camera button — main FAB */}
+          <label style={{ background: C.night, color: C.amber, border: `2px solid ${C.amber}`, borderRadius: '50%', width: 58, height: 58, fontSize: 26, cursor: 'pointer', boxShadow: `0 4px 20px rgba(0,0,0,0.3), 0 0 0 4px ${C.parchment}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            📷
+            <input type="file" accept="image/*,video/*" capture="environment" style={{ display: 'none' }}
+              onChange={e => {
+                const picked = Array.from(e.target.files)
+                if (!picked.length) return
+                setGalleryFiles(picked)
+                setShowAddMoment(true)
+              }} />
+          </label>
+        </div>
       )}
 
       {/* ── Modals ── */}
-      {showAddMoment && <AddMomentModal onClose={() => setShowAddMoment(false)} onAdd={handleAddMoment} loading={posting} />}
+      {showAddMoment && <AddMomentModal onClose={() => { setShowAddMoment(false); setGalleryFiles([]) }} onAdd={handleAddMoment} loading={posting} initialFiles={galleryFiles} />}
       {showAddTrip && <AddTripModal onClose={() => setShowAddTrip(false)} onAdd={handleAddTrip} />}
       {showMembers && <MembersPanel trips={trips} user={user} onClose={() => setShowMembers(false)} />}
       {menuMoment && <MomentMenu moment={menuMoment} user={user} onDelete={m => { setMenuMoment(null); setDeleteMoment(m) }} onClose={() => setMenuMoment(null)} />}
