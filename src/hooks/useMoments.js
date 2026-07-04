@@ -18,7 +18,7 @@ export function useMoments(tripId) {
         reactions (id, user_id, emoji)
       `)
       .eq('trip_id', tripId)
-      .order('created_at', { ascending: true })
+      .order('created_at', { ascending: false })
 
     if (error) { setError(error.message); setLoading(false); return }
     setMoments(data ?? [])
@@ -35,6 +35,9 @@ export function useMoments(tripId) {
       .single()
 
     if (momentErr) throw new Error(momentErr.message)
+
+    const optimistic = { ...moment, moment_images: [], reactions: [] }
+    setMoments(ms => [optimistic, ...ms])
 
     const imageUrls = await Promise.all(
       imageFiles.map(async (file, i) => {
@@ -55,15 +58,25 @@ export function useMoments(tripId) {
       )
     }
 
-    await fetchMoments()
+    fetchMoments()
     return moment
   }
 
   async function toggleReaction(momentId, userId, emoji) {
     const existing = moments.find(m => m.id === momentId)?.reactions?.find(r => r.user_id === userId && r.emoji === emoji)
+
+    setMoments(ms => ms.map(m => {
+      if (m.id !== momentId) return m
+      const reactions = m.reactions ?? []
+      if (existing) {
+        return { ...m, reactions: reactions.filter(r => r.id !== existing.id) }
+      } else {
+        return { ...m, reactions: [...reactions, { id: 'temp-' + Date.now(), moment_id: momentId, user_id: userId, emoji }] }
+      }
+    }))
+
     if (existing) await supabase.from('reactions').delete().eq('id', existing.id)
     else await supabase.from('reactions').insert({ moment_id: momentId, user_id: userId, emoji })
-    await fetchMoments()
   }
 
   return { moments, loading, error, addMoment, toggleReaction, refetch: fetchMoments }
