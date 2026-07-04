@@ -728,8 +728,18 @@ export function TimelinePage() {
               </div>
             )}
 
+            {/* Privacy gate */}
+            {activeTrip && activeTrip.isPrivate && !user && (
+              <div style={{ textAlign:'center', padding:'60px 20px' }}>
+                <div style={{ fontSize:44, marginBottom:12 }}>🔒</div>
+                <div style={{ fontFamily:'Cormorant Garamond, serif', fontStyle:'italic', fontSize:22, marginBottom:8 }}>This trip is private</div>
+                <div style={{ fontSize:13, color:'#aaa', fontFamily:'Geist, sans-serif', marginBottom:20 }}>Sign in to view this trip.</div>
+                <button onClick={signInWithGoogle} style={{ background:'#111', color:'#fff', border:'none', borderRadius:12, padding:'11px 28px', fontSize:14, fontFamily:'Geist, sans-serif', fontWeight:600, cursor:'pointer' }}>Sign in with Google</button>
+              </div>
+            )}
+
             {/* Moments */}
-            {loading ? (
+            {!(activeTrip && activeTrip.isPrivate && !user) && (loading ? (
               <div style={{ textAlign:'center', padding:'60px 0', color:'#bbb', fontFamily:'Geist, sans-serif', fontStyle:'italic' }}>Loading…</div>
             ) : visibleMoments.length === 0 ? (
               <div style={{ textAlign:'center', padding:'60px 20px' }}>
