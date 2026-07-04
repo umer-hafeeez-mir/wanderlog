@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useMoments } from '../hooks/useMoments'
 import { useAuth } from '../hooks/useAuth'
 import { DayRecap } from '../components/DayRecap'
+import { TravelDocs } from '../components/TravelDocs'
 import { TripBook } from '../components/TripBook'
 
 // ── Constants ─────────────────────────────────────────────────
@@ -514,6 +515,7 @@ export function TimelinePage() {
   const [deleteMoment, setDeleteMoment] = useState(null)
   const [recapDay, setRecapDay] = useState(null)
   const [showTripBook, setShowTripBook] = useState(false)
+  const [showDocs, setShowDocs] = useState(false)
   const [posting, setPosting] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [galleryFiles, setGalleryFiles] = useState([])
@@ -632,6 +634,7 @@ export function TimelinePage() {
                       <div style={{ fontSize:13, fontFamily:'Geist, sans-serif', fontWeight:600, color:'#111' }}>{user.user_metadata?.full_name??'Traveller'}</div>
                       <div style={{ fontSize:11, color:'#aaa', marginTop:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{user.email}</div>
                     </div>
+                    <button onClick={()=>{setShowDocs(true);setShowAccountMenu(false)}} style={{ width:'100%', background:'none', border:'none', padding:'11px 14px', color:'#333', fontFamily:'Geist, sans-serif', fontSize:13, textAlign:'left', cursor:'pointer', borderBottom:'1px solid #f5f5f5' }}>Travel Documents</button>
                     {user.email===ADMIN_EMAIL && <button onClick={()=>{setShowMembers(true);setShowAccountMenu(false)}} style={{ width:'100%', background:'none', border:'none', padding:'11px 14px', color:'#333', fontFamily:'Geist, sans-serif', fontSize:13, textAlign:'left', cursor:'pointer' }}>Members</button>}
                     <button onClick={()=>{signOut();setShowAccountMenu(false)}} style={{ width:'100%', background:'none', border:'none', padding:'11px 14px', color:'#e53e3e', fontFamily:'Geist, sans-serif', fontSize:13, textAlign:'left', cursor:'pointer' }}>Sign out</button>
                   </div>
@@ -802,6 +805,7 @@ export function TimelinePage() {
         {recapDay && <DayRecap day={recapDay} moments={grouped[recapDay]??[]} tripName={activeTrip?.label??'Trip'} tripEmoji={activeTrip?.emoji??'✈️'} onClose={()=>setRecapDay(null)} />}
         {showTripBook && <TripBook moments={visibleMoments} tripName={activeTrip?.label??'Trip'} tripEmoji={activeTrip?.emoji??'✈️'} onClose={()=>setShowTripBook(false)} />}
         {joinState && <JoinBanner joinState={joinState} onClose={()=>window.location.reload()} />}
+        {showDocs && <TravelDocs user={user} onClose={()=>setShowDocs(false)} />}
 
         {/* ── Toast ── */}
         {toast && <div style={{ position:'fixed', top:66, left:'50%', transform:'translateX(-50%)', background:'rgba(13,13,13,0.9)', color:'#fff', padding:'10px 20px', borderRadius:100, fontSize:13, fontFamily:'Geist, sans-serif', fontWeight:500, zIndex:500, whiteSpace:'nowrap', boxShadow:'0 4px 20px rgba(0,0,0,0.2)', backdropFilter:'blur(8px)' }}>{toast}</div>}
