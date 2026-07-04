@@ -185,7 +185,7 @@ function Comments({ momentId, user }) {
 }
 
 // ── Moment Card ───────────────────────────────────────────────
-function MomentCard({ moment, user, onReact, onMenuOpen }) {
+function MomentCard({ moment, user, onReact, onMenuOpen, cardIdx = 0 }) {
   const [lightboxIndex, setLightboxIndex] = useState(null)
   const images = moment.moment_images ?? []
   const reactions = moment.reactions ?? []
@@ -201,7 +201,7 @@ function MomentCard({ moment, user, onReact, onMenuOpen }) {
   const time = format(parseISO(moment.created_at), 'h:mm a')
 
   return (
-    <div style={{ background:'#fff', borderRadius:16, boxShadow:'0 1px 6px rgba(0,0,0,0.06)', marginBottom:10, overflow:'hidden' }}>
+    <div className='card-in moment-card' style={{ background:'#fff', borderRadius:16, boxShadow:'0 2px 12px rgba(0,0,0,0.07)', marginBottom:10, overflow:'hidden', animationDelay:`${cardIdx * 0.06}s` }}>
       {/* Header — prominent poster identity */}
       <div style={{ display:'flex', alignItems:'center', gap:10, padding:'12px 14px 0' }}>
         <div style={{ position:'relative', flexShrink:0 }}>
@@ -659,7 +659,7 @@ export function TimelinePage() {
           </div>
 
           {/* Tab bar — colorful pills like Config Timeline */}
-          <div style={{ display:'flex', overflowX:'auto', scrollbarWidth:'none', padding:'0 16px 10px', gap:8 }}>
+          <div className='slide-down' style={{ display:'flex', overflowX:'auto', scrollbarWidth:'none', padding:'0 16px 10px', gap:8 }}>
             {allTabs.map((tab, idx) => {
               const isActive = activeSlug === tab.slug
               const color = tab.slug === 'today' ? '#FF6B6B' : tab.slug === 'upcoming' ? '#8395A7' : dayColor(idx + 1)
@@ -676,7 +676,7 @@ export function TimelinePage() {
 
         {/* ── Offline banner ── */}
         {!isOnline && (
-          <div style={{ background:'#1a1a1a', color:'#fff', padding:'8px 16px', fontSize:12, fontFamily:'Geist, sans-serif', textAlign:'center', display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+          <div className='slide-down' style={{ background:'#1a1a1a', color:'#fff', padding:'8px 16px', fontSize:12, fontFamily:'Geist, sans-serif', textAlign:'center', display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
             <span style={{ width:7, height:7, borderRadius:'50%', background:'#FF6B6B', display:'inline-block', flexShrink:0 }} />
             You're offline — moments will sync when connected
             {pendingCount > 0 && <span style={{ background:'rgba(255,255,255,0.15)', borderRadius:100, padding:'1px 8px', fontSize:11 }}>{pendingCount} pending</span>}
@@ -705,13 +705,13 @@ export function TimelinePage() {
 
         {/* ── Feed ── */}
         {activeSlug !== 'upcoming' && (
-          <div className="fade-in" style={{ maxWidth:560, margin:'0 auto', padding:'0 14px 100px' }}
+          <div className="fade-up" style={{ maxWidth:560, margin:'0 auto', padding:'0 14px 100px' }}
             onTouchStart={e=>{window._swX=e.touches[0].clientX}}
             onTouchEnd={e=>{const d=window._swX-e.changedTouches[0].clientX;const slugs=[...trips.map(t=>t.slug),'upcoming'];const idx=slugs.indexOf(activeSlug);if(d>60&&idx<slugs.length-1)setActiveSlug(slugs[idx+1]);if(d<-60&&idx>0)setActiveSlug(slugs[idx-1])}}>
 
             {/* Trip hero */}
             {activeSlug === 'today' ? (
-              <div style={{ padding:'20px 0 12px', borderBottom:'1px solid rgba(0,0,0,0.06)' }}>
+              <div className='fade-up' style={{ padding:'20px 0 12px', borderBottom:'1px solid rgba(0,0,0,0.06)' }}>
                 <div style={{ fontSize:11, color:'#aaa', fontFamily:'Geist, sans-serif', letterSpacing:'0.1em', textTransform:'uppercase' }}>{format(new Date(),'EEEE, MMMM d')}</div>
                 <div style={{ fontFamily:'Cormorant Garamond, serif', fontStyle:'italic', fontSize:28, color:'#111', marginTop:2 }}>Today's Moments</div>
               </div>
@@ -746,7 +746,7 @@ export function TimelinePage() {
 
             {/* Day pills */}
             {days.length > 0 && (
-              <div style={{ display:'flex', gap:8, padding:'12px 0 4px', overflowX:'auto', scrollbarWidth:'none' }}>
+              <div className='fade-up' style={{ display:'flex', gap:8, padding:'12px 0 4px', overflowX:'auto', scrollbarWidth:'none' }}>
                 {days.map((day, idx) => {
                   const color = dayColor(idx)
                   const isActive = activeDay === day
@@ -777,8 +777,8 @@ export function TimelinePage() {
             {!(activeTrip && activeTrip.isPrivate && !user) && (loading ? (
               <div style={{ textAlign:'center', padding:'60px 0', color:'#bbb', fontFamily:'Geist, sans-serif', fontStyle:'italic' }}>Loading…</div>
             ) : visibleMoments.length === 0 ? (
-              <div style={{ textAlign:'center', padding:'60px 20px' }}>
-                <div style={{ fontSize:44, marginBottom:12 }}>{activeTrip?.emoji??'✈️'}</div>
+              <div className='fade-up' style={{ textAlign:'center', padding:'60px 20px' }}>
+                <div style={{ fontSize:44, marginBottom:12, animation:'float 3s ease-in-out infinite' }}>{activeTrip?.emoji??'✈️'}</div>
                 <div style={{ fontFamily:'Cormorant Garamond, serif', fontStyle:'italic', fontSize:22, marginBottom:6 }}>{activeSlug==='today'?'Nothing yet today':'No moments yet'}</div>
                 <div style={{ fontSize:13, color:'#aaa', fontFamily:'Geist, sans-serif' }}>Tap the camera to post your first moment</div>
 
@@ -787,14 +787,14 @@ export function TimelinePage() {
               visibleDays.map((day, idx) => {
                 const color = dayColor(activeDay ? days.indexOf(day) : idx)
                 return (
-                  <div key={day}>
+                  <div key={day} className='fade-up' style={{ animationDelay:`${idx * 0.1}s` }}>
                     <div style={{ display:'flex', alignItems:'center', gap:10, padding:'18px 0 10px' }}>
                       <div style={{ width:38, height:38, borderRadius:'50%', background:color, color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontFamily:'Geist, sans-serif', fontWeight:800, fontSize:14, flexShrink:0, boxShadow:`0 2px 8px ${color}55` }}>{day.split(' ')[1]}</div>
                       <div style={{ fontFamily:'Cormorant Garamond, serif', fontStyle:'italic', fontSize:20, color:'#111', fontWeight:600 }}>{day}</div>
                       <div style={{ flex:1, height:1, background:'rgba(0,0,0,0.06)' }} />
                       <button onClick={()=>setRecapDay(day)} style={{ background:`${color}18`, color, border:`1.5px solid ${color}44`, borderRadius:100, padding:'3px 12px', fontSize:11, fontFamily:'Geist, sans-serif', fontWeight:700, cursor:'pointer' }}>Recap</button>
                     </div>
-                    {grouped[day].map(m => <MomentCard key={m.id} moment={m} user={user} onReact={handleReact} onMenuOpen={setMenuMoment} />)}
+                    {grouped[day].map((m, cardIdx) => <MomentCard key={m.id} moment={m} user={user} onReact={handleReact} onMenuOpen={setMenuMoment} cardIdx={cardIdx} />)}
                   </div>
                 )
               })
@@ -805,11 +805,11 @@ export function TimelinePage() {
         {/* ── FABs ── */}
         {user && activeSlug !== 'upcoming' && (
           <div style={{ position:'fixed', bottom:32, right:22, zIndex:200, display:'flex', flexDirection:'column', alignItems:'center', gap:10 }}>
-            <label style={{ width:42, height:42, borderRadius:'50%', background:'rgba(13,13,13,0.85)', border:'1.5px solid rgba(245,200,66,0.35)', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', boxShadow:'0 2px 14px rgba(0,0,0,0.2)', backdropFilter:'blur(8px)' }}>
+            <label style={{ width:42, height:42, borderRadius:'50%', background:'rgba(13,13,13,0.85)', border:'1.5px solid rgba(245,200,66,0.35)', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', boxShadow:'0 2px 14px rgba(0,0,0,0.2)', backdropFilter:'blur(8px)', transition:'transform 0.15s, box-shadow 0.15s' }} onMouseEnter={e=>e.currentTarget.style.transform='scale(1.08)'} onMouseLeave={e=>e.currentTarget.style.transform='scale(1)'}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#F5C842" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5" fill="#F5C842" stroke="none"/><polyline points="21 15 16 10 5 21"/></svg>
               <input type="file" multiple accept="image/*,video/*" style={{ display:'none' }} onChange={e=>{const p=Array.from(e.target.files);if(!p.length)return;setGalleryFiles(p);setShowAddMoment(true)}} />
             </label>
-            <label style={{ width:58, height:58, borderRadius:'50%', background:'rgba(13,13,13,0.9)', border:'2px solid #F5C842', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', boxShadow:`0 4px 24px rgba(0,0,0,0.3), 0 0 0 4px rgba(245,248,240,0.8)`, backdropFilter:'blur(8px)' }}>
+            <label style={{ width:58, height:58, borderRadius:'50%', background:'rgba(13,13,13,0.9)', border:'2px solid #F5C842', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', boxShadow:`0 4px 24px rgba(0,0,0,0.3), 0 0 0 5px rgba(245,248,240,0.9)`, backdropFilter:'blur(8px)', transition:'transform 0.15s, box-shadow 0.15s' }} onMouseEnter={e=>e.currentTarget.style.transform='scale(1.08)'} onMouseLeave={e=>e.currentTarget.style.transform='scale(1)'}>
               <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#F5C842" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
               <input type="file" accept="image/*,video/*" capture="environment" style={{ display:'none' }} onChange={e=>{const p=Array.from(e.target.files);if(!p.length)return;setGalleryFiles(p);setShowAddMoment(true)}} />
             </label>
