@@ -19,6 +19,11 @@ const C = {
 }
 
 function docIcon(type) { return DOC_TYPES.find(d => d.id === type)?.icon ?? '📄' }
+
+async function getSignedUrl(path) {
+  const { data } = await supabase.storage.from('travel-documents').createSignedUrl(path, 3600)
+  return data?.signedUrl ?? null
+}
 function docLabel(type) { return DOC_TYPES.find(d => d.id === type)?.label ?? 'Document' }
 
 function ExpiryBadge({ date }) {
@@ -35,21 +40,28 @@ function ExpiryBadge({ date }) {
 
 function DocCard({ doc, onDelete, onView }) {
   const [deleting, setDeleting] = useState(false)
+  const [signedUrl, setSignedUrl] = useState(null)
+
+  useEffect(() => {
+    getSignedUrl(doc.file_url).then(url => setSignedUrl(url))
+  }, [doc.file_url])
+
+  const displayUrl = signedUrl
+
   async function handleDelete() {
     if (!confirm('Delete this document?')) return
     setDeleting(true)
-    const path = doc.file_url.split('/travel-documents/')[1]
-    if (path) await supabase.storage.from('travel-documents').remove([decodeURIComponent(path)])
+    if (doc.file_url) await supabase.storage.from('travel-documents').remove([doc.file_url])
     await supabase.from('travel_documents').delete().eq('id', doc.id)
     onDelete(doc.id)
     setDeleting(false)
   }
   return (
-    <div style={{ background:'#fff', borderRadius:14, border:`1px solid ${C.border}`, overflow:'hidden', cursor:'pointer' }} onClick={() => onView(doc)}>
+    <div style={{ background:'#fff', borderRadius:14, border:`1px solid ${C.border}`, overflow:'hidden', cursor:'pointer' }} onClick={() => onView({ ...doc, signedUrl: displayUrl })}>
       {/* Thumbnail */}
       <div style={{ height:110, background:'#f8f8f8', position:'relative', overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center' }}>
         {doc.file_type === 'image'
-          ? <img src={doc.file_url} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+          ? (displayUrl ? <img src={displayUrl} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : <div style={{ width:'100%', height:'100%', background:'#f0f0f0' }} />)
           : <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6 }}>
               <span style={{ fontSize:36 }}>📄</span>
               <span style={{ fontSize:10, color:C.dim, fontFamily:'Geist, sans-serif', fontWeight:600 }}>PDF</span>
@@ -114,15 +126,14 @@ function UploadModal({ user, onClose, onUploaded }) {
       const { error: uploadErr } = await supabase.storage.from('travel-documents').upload(path, file, { upsert:true })
       if (uploadErr) throw uploadErr
 
-      const { data: { publicUrl } } = supabase.storage.from('travel-documents').getPublicUrl(path)
-
+      // Private bucket — store path, generate signed URL for display
       const { data, error } = await supabase.from('travel_documents').insert({
         user_id: user.id,
         user_name: user.user_metadata?.full_name ?? user.email,
         person_name: personName.trim(),
         doc_type: docType,
         label: label.trim() || null,
-        file_url: publicUrl,
+        file_url: path,  // store storage path, not URL
         file_type: file.type.startsWith('image/') ? 'image' : 'pdf',
         expiry_date: expiryDate || null,
       }).select().single()
@@ -207,10 +218,11 @@ function UploadModal({ user, onClose, onUploaded }) {
 }
 
 function DocViewer({ doc, onClose }) {
+  const url = doc.signedUrl
   return (
     <div onClick={onClose} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.92)', zIndex:700, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center' }}>
       <div style={{ position:'absolute', top:16, right:16, display:'flex', gap:10 }}>
-        <a href={doc.file_url} download target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()}
+        <a href={url} download target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()}
           style={{ background:'rgba(255,255,255,0.15)', color:'#fff', border:'none', borderRadius:100, padding:'8px 16px', fontSize:13, fontFamily:'Geist, sans-serif', fontWeight:600, cursor:'pointer', textDecoration:'none' }}>
           Download
         </a>
@@ -220,9 +232,9 @@ function DocViewer({ doc, onClose }) {
         {docIcon(doc.doc_type)} {doc.label || docLabel(doc.doc_type)} · {doc.person_name}
       </div>
       {doc.file_type === 'image'
-        ? <img onClick={e=>e.stopPropagation()} src={doc.file_url} alt="" style={{ maxWidth:'92vw', maxHeight:'85vh', objectFit:'contain', borderRadius:8 }} />
+        ? <img onClick={e=>e.stopPropagation()} src={url} alt="" style={{ maxWidth:'92vw', maxHeight:'85vh', objectFit:'contain', borderRadius:8 }} />
         : <div onClick={e=>e.stopPropagation()} style={{ background:'#fff', borderRadius:12, overflow:'hidden', width:'92vw', maxWidth:600, height:'80vh' }}>
-            <iframe src={doc.file_url} style={{ width:'100%', height:'100%', border:'none' }} title="Document" />
+            <iframe src={url} style={{ width:'100%', height:'100%', border:'none' }} title="Document" />
           </div>
       }
     </div>
