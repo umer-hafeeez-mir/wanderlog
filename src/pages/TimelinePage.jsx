@@ -659,7 +659,7 @@ function JoinBanner({ joinState, onClose }) {
   if (!joinState) return null
   const msgs = {
     pending:  { icon: '⏳', title: 'Request sent!', sub: `Your request to join "${joinState.trip.name}" has been sent. You'll be able to post once the admin approves you.` },
-    approved: { icon: '✅', title: 'You're in!',   sub: `You can now post to "${joinState.trip.name}".` },
+    approved: { icon: '✅', title: "You're in!",   sub: `You can now post to "${joinState.trip.name}".` },
     rejected: { icon: '❌', title: 'Not approved',  sub: `Your request to join "${joinState.trip.name}" was not approved.` },
   }
   const msg = msgs[joinState.status] ?? msgs.pending
