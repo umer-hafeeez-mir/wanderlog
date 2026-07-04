@@ -63,7 +63,9 @@ export function useMoments(tripId) {
   }
 
   async function toggleReaction(momentId, userId, emoji) {
-    const existing = moments.find(m => m.id === momentId)?.reactions?.find(r => r.user_id === userId && r.emoji === emoji)
+    const existing = moments
+      .find(m => m.id === momentId)
+      ?.reactions?.find(r => r.user_id === userId && r.emoji === emoji)
 
     setMoments(ms => ms.map(m => {
       if (m.id !== momentId) return m
@@ -79,5 +81,5 @@ export function useMoments(tripId) {
     else await supabase.from('reactions').insert({ moment_id: momentId, user_id: userId, emoji })
   }
 
-  return { moments, loading, error, addMoment, toggleReaction, refetch: fetchMoments }
+  return { moments, loading, error, addMoment, toggleReaction, refetch: fetchMoments, setMoments }
 }
