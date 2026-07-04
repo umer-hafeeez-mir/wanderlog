@@ -1,10 +1,10 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
-import { DayRecap } from '../components/DayRecap'
-import { TripBook } from '../components/TripBook'
 import { format, parseISO, isToday } from 'date-fns'
 import { supabase } from '../lib/supabase'
 import { useMoments } from '../hooks/useMoments'
 import { useAuth } from '../hooks/useAuth'
+import { DayRecap } from '../components/DayRecap'
+import { TripBook } from '../components/TripBook'
 
 // ── Constants ─────────────────────────────────────────────────
 const ADMIN_EMAIL = 'umemir@gmail.com'
@@ -17,151 +17,82 @@ const DEFAULT_TRIPS = [
 ]
 const UPCOMING_TAB = { slug: 'upcoming', label: 'Upcoming', emoji: '🗓️', fixed: true }
 const REACTIONS = ['❤️','😍','🔥','😂','😮','👏','🙌','💯']
-const QUICK_REACTIONS = ['❤️','😍','🔥','😂']
 const EMOJI_OPTIONS = ['✈️','🌍','🏔️','🏖️','🏙️','🗺️','🎒','🚂','🛳️','🏕️','🍜','☕','🎭','📸','🌅','⛩️','🕌','🏛️','🌴','❄️']
 
-// ── Design tokens ─────────────────────────────────────────────
-const C = {
-  night:    '#0d1117',
-  parchment:'#f5f0e8',
-  amber:    '#e8a838',
-  rust:     '#c4603a',
-  sage:     '#7a9e7e',
-  ink:      '#1c2333',
-  mist:     '#e8e0cc',
-  ghost:    '#f8f4ec',
-  dim:      '#8a8070',
-}
+// Vivid colors per day — like Config Timeline
+const DAY_COLORS = ['#FF6B6B','#FF9F43','#FECA57','#1DD1A1','#48DBFB','#FF9FF3','#54A0FF','#5F27CD','#00D2D3','#EE5A24','#C8D6E5','#576574']
+const dayColor = idx => DAY_COLORS[idx % DAY_COLORS.length]
 
-// Day pill colors — vivid, each day gets a different one
-const DAY_COLORS = [
-  '#FF6B6B', '#FF9F43', '#FECA57', '#48DBFB',
-  '#FF9FF3', '#54A0FF', '#5F27CD', '#00D2D3',
-  '#01CBC6', '#C8D6E5', '#8395A7', '#EE5A24',
-]
-function dayColor(idx) { return DAY_COLORS[idx % DAY_COLORS.length] }
+// Inject fonts
+const _fl = document.createElement('link')
+_fl.href = 'https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Cormorant+Garamond:ital,wght@0,600;1,400;1,600&display=swap'
+_fl.rel = 'stylesheet'
+if (!document.head.querySelector('[href*="Geist"]')) document.head.appendChild(_fl)
 
-const fonts = {
-  display: "'Cormorant Garamond', Georgia, serif",
-  ui:      "'DM Sans', Inter, sans-serif",
-}
-
-// ── Inject Google Fonts ───────────────────────────────────────
-const fontLink = document.createElement('link')
-fontLink.href = 'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400;1,600&family=DM+Sans:wght@300;400;500;600&display=swap'
-fontLink.rel = 'stylesheet'
-document.head.appendChild(fontLink)
-
-// ── Hooks ─────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────
 async function loadTripCovers(trips, setTrips) {
   const ids = trips.filter(t => t.id).map(t => t.id)
   const { data } = await supabase.from('trips').select('id, cover_url').in('id', ids)
   if (!data) return
-  setTrips(ts => ts.map(t => {
-    const row = data.find(r => r.id === t.id)
-    return row?.cover_url ? { ...t, cover: row.cover_url } : t
-  }))
+  setTrips(ts => ts.map(t => { const r = data.find(x => x.id === t.id); return r?.cover_url ? { ...t, cover: r.cover_url } : t }))
 }
 
 function useJoinRequest(trips, user, showToast) {
   const [joinState, setJoinState] = useState(null)
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    const token = params.get('join')
+    const token = new URLSearchParams(window.location.search).get('join')
     if (!token || !user) return
-    async function handleJoin() {
+    async function go() {
       const { data: trip } = await supabase.from('trips').select('id, name, invite_token').eq('invite_token', token).single()
       if (!trip) { showToast('Invalid invite link'); return }
       const { data: existing } = await supabase.from('trip_members').select('status').eq('trip_id', trip.id).eq('user_id', user.id).single()
       if (existing) { setJoinState({ trip, status: existing.status }); return }
-      const allTripIds = DEFAULT_TRIPS.filter(t => !t.fixed).map(t => t.id)
-      await supabase.from('trip_members').upsert(
-        allTripIds.map(tripId => ({
-          trip_id: tripId, user_id: user.id,
-          user_name: user.user_metadata?.full_name ?? user.email,
-          user_avatar: user.user_metadata?.avatar_url ?? null,
-          user_email: user.email, status: 'pending'
-        })), { onConflict: 'trip_id,user_id' }
-      )
+      const allIds = DEFAULT_TRIPS.filter(t => !t.fixed).map(t => t.id)
+      await supabase.from('trip_members').upsert(allIds.map(tripId => ({ trip_id: tripId, user_id: user.id, user_name: user.user_metadata?.full_name ?? user.email, user_avatar: user.user_metadata?.avatar_url ?? null, user_email: user.email, status: 'pending' })), { onConflict: 'trip_id,user_id' })
       try {
-        const { data: notifData } = await supabase.functions.invoke('notify-join-request', {
-          body: { tripName: trip.name, requesterName: user.user_metadata?.full_name ?? user.email, requesterEmail: user.email, adminEmail: ADMIN_EMAIL }
-        })
-        if (notifData && !notifData.emailOk) {
-          const waText = encodeURIComponent(`📸 Wanderlog: ${user.user_metadata?.full_name ?? user.email} (${user.email}) wants to join your *${trip.name}* trip. Open the app to approve: https://wanderlog-one.vercel.app`)
-          window.open(`https://wa.me/${ADMIN_WHATSAPP}?text=${waText}`, '_blank')
-        }
+        const { data: nd } = await supabase.functions.invoke('notify-join-request', { body: { tripName: trip.name, requesterName: user.user_metadata?.full_name ?? user.email, requesterEmail: user.email, adminEmail: ADMIN_EMAIL } })
+        if (nd && !nd.emailOk) { const t = encodeURIComponent(`📸 Wanderlog: ${user.user_metadata?.full_name ?? user.email} (${user.email}) wants to join *${trip.name}*. Approve: https://wanderlog-one.vercel.app`); window.open(`https://wa.me/${ADMIN_WHATSAPP}?text=${t}`, '_blank') }
       } catch {}
       setJoinState({ trip, status: 'pending' })
       window.history.replaceState({}, '', '/')
     }
-    handleJoin()
+    go()
   }, [user])
   return joinState
 }
 
+function isVideo(url) { return url && /\.(mp4|mov|webm|ogg|avi)$/i.test(url.split('?')[0]) }
+
 // ── Lightbox ──────────────────────────────────────────────────
 function Lightbox({ images, startIndex, onClose }) {
-  const [index, setIndex] = useState(startIndex)
+  const [i, setI] = useState(startIndex)
   useEffect(() => {
-    const onKey = e => {
-      if (e.key === 'Escape') onClose()
-      if (e.key === 'ArrowRight') setIndex(i => Math.min(i + 1, images.length - 1))
-      if (e.key === 'ArrowLeft') setIndex(i => Math.max(i - 1, 0))
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [images.length, onClose])
-
+    const h = e => { if (e.key === 'Escape') onClose(); if (e.key === 'ArrowRight') setI(x => Math.min(x+1, images.length-1)); if (e.key === 'ArrowLeft') setI(x => Math.max(x-1, 0)) }
+    window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h)
+  }, [])
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(13,17,23,0.97)', zIndex: 600, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <button onClick={onClose} style={{ position: 'absolute', top: 20, right: 20, background: 'rgba(255,255,255,0.1)', border: 'none', color: '#fff', width: 40, height: 40, borderRadius: '50%', fontSize: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
-      {images.length > 1 && <div style={{ position: 'absolute', top: 24, left: '50%', transform: 'translateX(-50%)', color: 'rgba(255,255,255,0.5)', fontSize: 12, fontFamily: fonts.ui, letterSpacing: '0.1em' }}>{index + 1} / {images.length}</div>}
-      {index > 0 && <button onClick={e => { e.stopPropagation(); setIndex(i => i - 1) }} style={{ position: 'absolute', left: 20, background: 'rgba(255,255,255,0.1)', border: 'none', color: '#fff', width: 44, height: 44, borderRadius: '50%', fontSize: 22, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>}
-      <img onClick={e => e.stopPropagation()} src={images[index].url} alt="" style={{ maxWidth: '90vw', maxHeight: '85vh', objectFit: 'contain', borderRadius: 4 }} />
-      {index < images.length - 1 && <button onClick={e => { e.stopPropagation(); setIndex(i => i + 1) }} style={{ position: 'absolute', right: 20, background: 'rgba(255,255,255,0.1)', border: 'none', color: '#fff', width: 44, height: 44, borderRadius: '50%', fontSize: 22, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>›</button>}
-      {images.length > 1 && (
-        <div style={{ position: 'absolute', bottom: 24, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 6 }}>
-          {images.map((_, i) => <div key={i} onClick={e => { e.stopPropagation(); setIndex(i) }} style={{ width: i === index ? 20 : 6, height: 6, borderRadius: 3, background: i === index ? C.amber : 'rgba(255,255,255,0.3)', cursor: 'pointer', transition: 'all 0.2s' }} />)}
-        </div>
-      )}
+    <div onClick={onClose} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.96)', zIndex:600, display:'flex', alignItems:'center', justifyContent:'center' }}>
+      <button onClick={onClose} style={{ position:'absolute', top:16, right:16, background:'rgba(255,255,255,0.1)', border:'none', color:'#fff', width:36, height:36, borderRadius:'50%', fontSize:16, cursor:'pointer' }}>✕</button>
+      {images.length > 1 && <div style={{ position:'absolute', top:20, left:'50%', transform:'translateX(-50%)', color:'rgba(255,255,255,0.5)', fontSize:12 }}>{i+1} / {images.length}</div>}
+      {i > 0 && <button onClick={e=>{e.stopPropagation();setI(x=>x-1)}} style={{ position:'absolute', left:16, background:'rgba(255,255,255,0.1)', border:'none', color:'#fff', width:44, height:44, borderRadius:'50%', fontSize:24, cursor:'pointer' }}>‹</button>}
+      {isVideo(images[i].url) ? <video onClick={e=>e.stopPropagation()} src={images[i].url} controls autoPlay style={{ maxWidth:'90vw', maxHeight:'85vh', borderRadius:4 }} /> : <img onClick={e=>e.stopPropagation()} src={images[i].url} alt="" style={{ maxWidth:'90vw', maxHeight:'85vh', objectFit:'contain', borderRadius:4 }} />}
+      {i < images.length-1 && <button onClick={e=>{e.stopPropagation();setI(x=>x+1)}} style={{ position:'absolute', right:16, background:'rgba(255,255,255,0.1)', border:'none', color:'#fff', width:44, height:44, borderRadius:'50%', fontSize:24, cursor:'pointer' }}>›</button>}
+      {images.length > 1 && <div style={{ position:'absolute', bottom:20, left:'50%', transform:'translateX(-50%)', display:'flex', gap:6 }}>{images.map((_,j)=><div key={j} onClick={e=>{e.stopPropagation();setI(j)}} style={{ width:j===i?20:6, height:6, borderRadius:3, background:j===i?'#fff':'rgba(255,255,255,0.3)', cursor:'pointer', transition:'all 0.2s' }} />)}</div>}
     </div>
   )
 }
 
 // ── Photo Grid ────────────────────────────────────────────────
-function isVideo(url) {
-  return url && /\.(mp4|mov|webm|ogg|avi)$/i.test(url.split('?')[0])
-}
-
 function PhotoGrid({ images, onPhotoClick }) {
   if (!images?.length) return null
-  const shown = images.slice(0, 4)
-  const extra = images.length - 4
-  const grid = shown.length === 1 ? { gridTemplateColumns: '1fr', height: 300 }
-    : shown.length === 2 ? { gridTemplateColumns: '1fr 1fr', height: 220 }
-    : { gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr', height: 320 }
+  const shown = images.slice(0, 4), extra = images.length - 4
+  const grid = shown.length === 1 ? { gridTemplateColumns:'1fr', height:280 } : shown.length === 2 ? { gridTemplateColumns:'1fr 1fr', height:210 } : { gridTemplateColumns:'1fr 1fr', gridTemplateRows:'1fr 1fr', height:310 }
   return (
-    <div style={{ display: 'grid', gap: 2, margin: '0 -20px', ...grid }}>
-      {shown.map((img, i) => (
-        <div key={img.id ?? i} onClick={() => onPhotoClick(i)}
-          style={{ position: 'relative', overflow: 'hidden', cursor: 'pointer', ...(shown.length === 3 && i === 0 ? { gridRow: '1 / 3' } : {}) }}>
-          {isVideo(img.url) ? (
-            <video src={img.url} muted playsInline loop
-              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-          ) : (
-            <img src={img.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', transition: 'transform 0.4s ease' }}
-              onMouseEnter={e => e.target.style.transform = 'scale(1.04)'}
-              onMouseLeave={e => e.target.style.transform = 'scale(1)'} />
-          )}
-          {isVideo(img.url) && (
-            <div style={{ position: 'absolute', top: 10, left: 10, background: 'rgba(0,0,0,0.55)', borderRadius: 8, padding: '3px 8px', fontSize: 11, color: '#fff', fontFamily: fonts.ui, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
-              ▶ VIDEO
-            </div>
-          )}
-          {i === 3 && extra > 0 && (
-            <div style={{ position: 'absolute', inset: 0, background: 'rgba(13,17,23,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 28, fontFamily: fonts.display, fontWeight: 600 }}>+{extra}</div>
-          )}
+    <div style={{ display:'grid', gap:2, ...grid }}>
+      {shown.map((img, j) => (
+        <div key={img.id??j} onClick={()=>onPhotoClick(j)} style={{ position:'relative', overflow:'hidden', cursor:'pointer', ...(shown.length===3&&j===0?{gridRow:'1/3'}:{}) }}>
+          {isVideo(img.url) ? <video src={img.url} muted playsInline loop style={{ width:'100%', height:'100%', objectFit:'cover', display:'block' }} /> : <img src={img.url} alt="" style={{ width:'100%', height:'100%', objectFit:'cover', display:'block' }} />}
+          {j===3&&extra>0 && <div style={{ position:'absolute', inset:0, background:'rgba(0,0,0,0.45)', display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontSize:24, fontWeight:700 }}>+{extra}</div>}
         </div>
       ))}
     </div>
@@ -169,64 +100,9 @@ function PhotoGrid({ images, onPhotoClick }) {
 }
 
 // ── Avatar ────────────────────────────────────────────────────
-function Avatar({ src, name, size = 32 }) {
-  if (src) return <img src={src} alt="" style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
-  return (
-    <div style={{ width: size, height: size, borderRadius: '50%', background: `linear-gradient(135deg, ${C.rust}, ${C.amber})`, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: size * 0.38, fontWeight: 600, fontFamily: fonts.ui, flexShrink: 0 }}>
-      {name?.[0]?.toUpperCase() ?? '?'}
-    </div>
-  )
-}
-
-// ── Reaction Bar ──────────────────────────────────────────────
-function ReactionBar({ moment, user, onReact }) {
-  const [showPicker, setShowPicker] = useState(false)
-  const reactions = moment.reactions ?? []
-  const grouped = REACTIONS.reduce((acc, emoji) => {
-    const count = reactions.filter(r => r.emoji === emoji).length
-    const mine = reactions.some(r => r.emoji === emoji && r.user_id === user?.id)
-    if (count > 0) acc.push({ emoji, count, mine })
-    return acc
-  }, [])
-
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', position: 'relative' }}>
-      {QUICK_REACTIONS.map(emoji => {
-        const existing = grouped.find(r => r.emoji === emoji)
-        const mine = existing?.mine ?? false
-        const count = existing?.count ?? 0
-        return (
-          <button key={emoji} onClick={() => user && onReact(moment.id, emoji)} disabled={!user}
-            style={{ background: mine ? `${C.amber}22` : C.ghost, border: `1.5px solid ${mine ? C.amber : C.mist}`, borderRadius: 100, padding: '4px 10px', fontSize: 14, cursor: user ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', gap: 4, transition: 'all 0.15s', opacity: user ? 1 : 0.45 }}>
-            {emoji}{count > 0 && <span style={{ fontSize: 11, fontWeight: 600, fontFamily: fonts.ui, color: mine ? C.rust : C.dim }}>{count}</span>}
-          </button>
-        )
-      })}
-      {user && (
-        <div style={{ position: 'relative' }}>
-          <button onClick={() => setShowPicker(p => !p)} style={{ background: C.ghost, border: `1.5px solid ${C.mist}`, borderRadius: 100, padding: '4px 10px', fontSize: 14, cursor: 'pointer', color: C.dim }}>＋</button>
-          {showPicker && (
-            <div style={{ position: 'absolute', bottom: 36, left: 0, background: '#fff', borderRadius: 16, boxShadow: '0 8px 32px rgba(0,0,0,0.12)', padding: 10, display: 'flex', gap: 4, flexWrap: 'wrap', width: 220, zIndex: 200 }}>
-              {REACTIONS.map(emoji => (
-                <button key={emoji} onClick={() => { onReact(moment.id, emoji); setShowPicker(false) }}
-                  style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', borderRadius: 8, padding: 4, width: 38, height: 38, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.1s' }}
-                  onMouseEnter={e => e.target.style.background = C.ghost}
-                  onMouseLeave={e => e.target.style.background = 'none'}>
-                  {emoji}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-      {grouped.filter(r => !QUICK_REACTIONS.includes(r.emoji)).map(r => (
-        <button key={r.emoji} onClick={() => user && onReact(moment.id, r.emoji)}
-          style={{ background: r.mine ? `${C.amber}22` : C.ghost, border: `1.5px solid ${r.mine ? C.amber : C.mist}`, borderRadius: 100, padding: '4px 10px', fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
-          {r.emoji}<span style={{ fontSize: 11, fontWeight: 600, fontFamily: fonts.ui, color: C.dim }}>{r.count}</span>
-        </button>
-      ))}
-    </div>
-  )
+function Avatar({ src, name, size=32 }) {
+  if (src) return <img src={src} alt="" style={{ width:size, height:size, borderRadius:'50%', objectFit:'cover', flexShrink:0 }} />
+  return <div style={{ width:size, height:size, borderRadius:'50%', background:'#FF6B6B', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:size*0.38, fontWeight:700, flexShrink:0 }}>{name?.[0]?.toUpperCase()??'?'}</div>
 }
 
 // ── Comments ──────────────────────────────────────────────────
@@ -235,52 +111,31 @@ function Comments({ momentId, user }) {
   const [text, setText] = useState('')
   const [loading, setLoading] = useState(false)
   const [expanded, setExpanded] = useState(false)
-
-  useEffect(() => {
-    supabase.from('comments').select('*').eq('moment_id', momentId).order('created_at').then(({ data }) => setComments(data ?? []))
-  }, [momentId])
-
+  useEffect(() => { supabase.from('comments').select('*').eq('moment_id', momentId).order('created_at').then(({ data }) => setComments(data??[])) }, [momentId])
   async function submit() {
-    if (!text.trim() || !user) return
+    if (!text.trim()||!user) return
     setLoading(true)
-    const { data } = await supabase.from('comments').insert({ moment_id: momentId, user_id: user.id, text: text.trim(), user_name: user.user_metadata?.full_name ?? user.email }).select().single()
-    if (data) { setComments(c => [...c, data]); setText(''); setExpanded(true) }
+    const { data } = await supabase.from('comments').insert({ moment_id:momentId, user_id:user.id, text:text.trim(), user_name:user.user_metadata?.full_name??user.email }).select().single()
+    if (data) { setComments(c=>[...c,data]); setText(''); setExpanded(true) }
     setLoading(false)
   }
-
   const visible = expanded ? comments : comments.slice(-1)
-
   return (
-    <div>
-      {comments.length > 1 && !expanded && (
-        <button onClick={() => setExpanded(true)} style={{ background: 'none', border: 'none', fontSize: 12, fontFamily: fonts.ui, color: C.dim, cursor: 'pointer', padding: '0 0 6px', textDecoration: 'underline' }}>
-          View all {comments.length} comments
-        </button>
-      )}
+    <div style={{ padding:'10px 14px 14px', borderTop:'1px solid #f0f0f0' }}>
+      {comments.length > 1 && !expanded && <button onClick={()=>setExpanded(true)} style={{ background:'none', border:'none', fontSize:12, color:'#999', cursor:'pointer', padding:'0 0 8px', fontFamily:'Geist, sans-serif' }}>View all {comments.length} comments</button>}
       {visible.map(c => (
-        <div key={c.id} style={{ display: 'flex', gap: 8, marginBottom: 6, alignItems: 'flex-start' }}>
-          <div style={{ width: 22, height: 22, borderRadius: '50%', background: `linear-gradient(135deg, ${C.sage}, ${C.amber})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: '#fff', flexShrink: 0, fontFamily: fonts.ui }}>
-            {c.user_name?.[0]?.toUpperCase() ?? '?'}
-          </div>
-          <div style={{ flex: 1 }}>
-            <span style={{ fontWeight: 600, fontSize: 12, fontFamily: fonts.ui, color: C.ink }}>{c.user_name?.split(' ')[0] ?? 'User'} </span>
-            <span style={{ fontSize: 13, fontFamily: fonts.ui, color: '#3a3530' }}>{c.text}</span>
-          </div>
+        <div key={c.id} style={{ display:'flex', gap:8, marginBottom:8, alignItems:'flex-start' }}>
+          <div style={{ width:22, height:22, borderRadius:'50%', background:'#f0f0f0', display:'flex', alignItems:'center', justifyContent:'center', fontSize:10, fontWeight:700, color:'#666', flexShrink:0 }}>{c.user_name?.[0]?.toUpperCase()??'?'}</div>
+          <div style={{ flex:1 }}><span style={{ fontWeight:600, fontSize:12, color:'#222', fontFamily:'Geist, sans-serif' }}>{c.user_name?.split(' ')[0]??'User'} </span><span style={{ fontSize:13, color:'#444', fontFamily:'Geist, sans-serif' }}>{c.text}</span></div>
         </div>
       ))}
       {user ? (
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 4 }}>
+        <div style={{ display:'flex', gap:8, alignItems:'center', marginTop:4 }}>
           <Avatar src={user.user_metadata?.avatar_url} name={user.email} size={24} />
-          <input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => e.key === 'Enter' && submit()}
-            placeholder="Add a comment…"
-            style={{ flex: 1, border: 'none', borderBottom: `1.5px solid ${C.mist}`, background: 'transparent', padding: '5px 0', fontSize: 13, fontFamily: fonts.ui, outline: 'none', color: C.ink }} />
-          {text.trim() && (
-            <button onClick={submit} disabled={loading} style={{ background: 'none', border: 'none', color: C.rust, fontWeight: 600, fontSize: 13, fontFamily: fonts.ui, cursor: 'pointer' }}>Post</button>
-          )}
+          <input value={text} onChange={e=>setText(e.target.value)} onKeyDown={e=>e.key==='Enter'&&submit()} placeholder="Add a comment…" style={{ flex:1, border:'none', borderBottom:'1px solid #e8e8e8', background:'transparent', padding:'5px 0', fontSize:13, fontFamily:'Geist, sans-serif', outline:'none', color:'#222' }} />
+          {text.trim() && <button onClick={submit} disabled={loading} style={{ background:'none', border:'none', color:'#FF6B6B', fontWeight:600, fontSize:13, fontFamily:'Geist, sans-serif', cursor:'pointer' }}>Post</button>}
         </div>
-      ) : (
-        <p style={{ fontSize: 12, fontFamily: fonts.ui, color: C.dim, fontStyle: 'italic', margin: '4px 0 0' }}>Sign in to comment</p>
-      )}
+      ) : <p style={{ fontSize:12, color:'#bbb', margin:'4px 0 0', fontFamily:'Geist, sans-serif', fontStyle:'italic' }}>Sign in to comment</p>}
     </div>
   )
 }
@@ -288,51 +143,74 @@ function Comments({ momentId, user }) {
 // ── Moment Card ───────────────────────────────────────────────
 function MomentCard({ moment, user, onReact, onMenuOpen }) {
   const [lightboxIndex, setLightboxIndex] = useState(null)
-  const time = format(parseISO(moment.created_at), 'h:mm a')
-  const displayName = moment.user_name ?? 'Traveller'
   const images = moment.moment_images ?? []
+  const reactions = moment.reactions ?? []
+  const heartCount = reactions.filter(r => r.emoji === '❤️').length
+  const heartMine = reactions.some(r => r.emoji === '❤️' && r.user_id === user?.id)
+  const otherReactions = REACTIONS.slice(1).reduce((acc, e) => {
+    const count = reactions.filter(r => r.emoji === e).length
+    const mine = reactions.some(r => r.emoji === e && r.user_id === user?.id)
+    if (count > 0) acc.push({ emoji:e, count, mine })
+    return acc
+  }, [])
+  const [showPicker, setShowPicker] = useState(false)
+  const time = format(parseISO(moment.created_at), 'h:mm a')
 
   return (
-    <div style={{ background: '#fff', borderRadius: 20, boxShadow: '0 2px 20px rgba(28,35,51,0.07), 0 0 0 1px rgba(28,35,51,0.04)', marginBottom: 16, overflow: 'hidden', position: 'relative' }}>
-      {/* Card header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 14px 0' }}>
-        <Avatar src={moment.user_avatar} name={displayName} size={34} />
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, fontFamily: fonts.ui, color: C.ink, letterSpacing: '-0.01em' }}>{displayName}</div>
-          <div style={{ fontSize: 11, fontFamily: fonts.ui, color: C.dim, marginTop: 1 }}>{time}</div>
+    <div style={{ background:'#fff', borderRadius:16, boxShadow:'0 1px 6px rgba(0,0,0,0.06)', marginBottom:10, overflow:'hidden' }}>
+      {/* Header */}
+      <div style={{ display:'flex', alignItems:'center', gap:10, padding:'12px 14px 0' }}>
+        <Avatar src={moment.user_avatar} name={moment.user_name} size={34} />
+        <div style={{ flex:1 }}>
+          <div style={{ fontSize:13, fontWeight:600, fontFamily:'Geist, sans-serif', color:'#111' }}>{moment.user_name ?? 'Traveller'}</div>
+          <div style={{ fontSize:11, color:'#999', fontFamily:'Geist, sans-serif' }}>{time}</div>
         </div>
-        {user && (
-          <button onClick={() => onMenuOpen(moment)}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.dim, padding: '4px 8px', borderRadius: 8, fontSize: 18, lineHeight: 1, display: 'flex', alignItems: 'center' }}>
-            •••
-          </button>
-        )}
+        {user && <button onClick={()=>onMenuOpen(moment)} style={{ background:'none', border:'none', cursor:'pointer', color:'#bbb', padding:'4px 6px', fontSize:16, borderRadius:6 }}>•••</button>}
       </div>
 
       {/* Caption */}
-      {moment.caption && (
-        <p style={{ margin: '8px 14px 10px', fontSize: 14, lineHeight: 1.55, fontFamily: fonts.ui, color: '#2a2420', fontWeight: 400 }}>
-          {moment.caption}
-        </p>
-      )}
+      {moment.caption && <p style={{ margin:'8px 14px', fontSize:14, lineHeight:1.55, fontFamily:'Geist, sans-serif', color:'#222', fontWeight:400 }}>{moment.caption}</p>}
 
       {/* Location */}
-      {moment.location && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, margin: moment.caption ? '-4px 20px 12px' : '10px 20px 12px', fontSize: 11, fontFamily: fonts.ui, color: C.dim, fontWeight: 500, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-          <span style={{ fontSize: 13 }}>📍</span> {moment.location}
-        </div>
-      )}
+      {moment.location && <div style={{ display:'flex', alignItems:'center', gap:4, margin: moment.caption ? '-2px 14px 8px' : '8px 14px', fontSize:11, color:'#999', fontFamily:'Geist, sans-serif', textTransform:'uppercase', letterSpacing:'0.05em' }}>📍 {moment.location}</div>}
 
       {/* Photos */}
       <PhotoGrid images={images} onPhotoClick={setLightboxIndex} />
-      {lightboxIndex !== null && <Lightbox images={images} startIndex={lightboxIndex} onClose={() => setLightboxIndex(null)} />}
+      {lightboxIndex !== null && <Lightbox images={images} startIndex={lightboxIndex} onClose={()=>setLightboxIndex(null)} />}
 
-      {/* Reactions + Comments */}
-      <div style={{ padding: '10px 14px 14px' }}>
-        <ReactionBar moment={moment} user={user} onReact={onReact} />
-        <div style={{ height: 1, background: '#f0f0f0', margin: '10px 0' }} />
-        <Comments momentId={moment.id} user={user} />
+      {/* Reactions */}
+      <div style={{ padding:'10px 14px 0', display:'flex', alignItems:'center', gap:6, flexWrap:'wrap', position:'relative' }}>
+        {/* Heart */}
+        <button onClick={()=>user&&onReact(moment.id,'❤️')} disabled={!user}
+          style={{ background:heartMine?'#fff0f0':'#f5f5f5', border:`1.5px solid ${heartMine?'#ff6b6b':'#e8e8e8'}`, borderRadius:100, padding:'4px 12px', fontSize:13, cursor:user?'pointer':'default', display:'flex', alignItems:'center', gap:5, opacity:user?1:0.6, transition:'all 0.15s' }}>
+          <span style={{ fontSize:15 }}>🤍</span>
+          <span style={{ fontFamily:'Geist, sans-serif', fontWeight:600, fontSize:12, color:heartMine?'#e53e3e':'#666' }}>{heartCount}</span>
+          {heartCount > 0 && <span style={{ fontFamily:'Geist, sans-serif', fontSize:11, color:'#999' }}>{heartCount===1?'love':'loves'}</span>}
+        </button>
+
+        {/* Other reactions */}
+        {otherReactions.map(r => (
+          <button key={r.emoji} onClick={()=>user&&onReact(moment.id,r.emoji)}
+            style={{ background:r.mine?'#fff8e0':'#f5f5f5', border:`1.5px solid ${r.mine?'#e8a838':'#e8e8e8'}`, borderRadius:100, padding:'4px 10px', fontSize:13, cursor:'pointer', display:'flex', alignItems:'center', gap:4 }}>
+            {r.emoji} <span style={{ fontSize:11, fontWeight:600, fontFamily:'Geist, sans-serif', color:'#666' }}>{r.count}</span>
+          </button>
+        ))}
+
+        {/* Add reaction */}
+        {user && (
+          <div style={{ position:'relative' }}>
+            <button onClick={()=>setShowPicker(p=>!p)} style={{ background:'#f5f5f5', border:'1.5px solid #e8e8e8', borderRadius:100, padding:'4px 10px', fontSize:15, cursor:'pointer', color:'#aaa', lineHeight:1 }}>＋</button>
+            {showPicker && (
+              <div style={{ position:'absolute', bottom:36, left:0, background:'#fff', borderRadius:16, boxShadow:'0 8px 32px rgba(0,0,0,0.12)', padding:10, display:'flex', gap:4, flexWrap:'wrap', width:220, zIndex:200 }}>
+                {REACTIONS.map(e => <button key={e} onClick={()=>{onReact(moment.id,e);setShowPicker(false)}} style={{ background:'none', border:'none', fontSize:22, cursor:'pointer', borderRadius:8, padding:4, width:38, height:38 }}>{e}</button>)}
+              </div>
+            )}
+          </div>
+        )}
       </div>
+
+      {/* Comments */}
+      <Comments momentId={moment.id} user={user} />
     </div>
   )
 }
@@ -342,239 +220,111 @@ function MomentMenu({ moment, user, onDelete, onClose }) {
   const isOwner = user?.id === moment.user_id
   const images = moment.moment_images ?? []
   const [copied, setCopied] = useState(false)
-
-  async function savePhoto() {
-    try {
-      const res = await fetch(images[0].url)
-      const blob = await res.blob()
-      const a = document.createElement('a')
-      a.href = URL.createObjectURL(blob)
-      a.download = 'wanderlog.jpg'
-      a.click()
-    } catch {}
-    onClose()
-  }
-
-  function shareWhatsApp() {
-    const text = encodeURIComponent('Check out my trip on Wanderlog! ' + window.location.href)
-    window.open('https://wa.me/?text=' + text, '_blank')
-    onClose()
-  }
-
-  async function copyLink() {
-    await navigator.clipboard?.writeText(window.location.href)
-    setCopied(true)
-    setTimeout(onClose, 800)
-  }
-
-  const items = [
-    { label: 'WhatsApp', icon: '↗', action: shareWhatsApp },
-    { label: copied ? 'Copied!' : 'Copy link', icon: copied ? '✓' : '⌘', action: copyLink },
-    ...(images.length > 0 ? [{ label: 'Save photo', icon: '↓', action: savePhoto }] : []),
-    ...(isOwner ? [{ label: 'Delete', icon: '×', action: () => { onDelete(moment); onClose() }, danger: true }] : []),
-  ]
-
+  async function savePhoto() { try { const r=await fetch(images[0].url); const b=await r.blob(); const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download='wanderlog.jpg'; a.click() } catch {} onClose() }
+  function shareWA() { window.open('https://wa.me/?text='+encodeURIComponent('Check out my trip! '+window.location.href),'_blank'); onClose() }
+  async function copyLink() { await navigator.clipboard?.writeText(window.location.href); setCopied(true); setTimeout(onClose,800) }
+  const items = [{ label:'Share on WhatsApp', action:shareWA }, { label:copied?'Copied!':'Copy link', action:copyLink }, ...(images.length>0?[{ label:'Save photo', action:savePhoto }]:[]), ...(isOwner?[{ label:'Delete', action:()=>{onDelete(moment);onClose()}, danger:true }]:[])]
   return (
-    <div onClick={e => e.target === e.currentTarget && onClose()}
-      style={{ position: 'fixed', inset: 0, zIndex: 400, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', padding: '0 16px 32px' }}>
-      <div style={{ width: '100%', maxWidth: 560, display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {/* Action pills */}
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+    <div onClick={e=>e.target===e.currentTarget&&onClose()} style={{ position:'fixed', inset:0, zIndex:400, display:'flex', alignItems:'flex-end', justifyContent:'center', padding:'0 16px 32px' }}>
+      <div style={{ width:'100%', maxWidth:560, display:'flex', flexDirection:'column', gap:8 }}>
+        <div style={{ display:'flex', gap:8, justifyContent:'center', flexWrap:'wrap' }}>
           {items.map(item => (
-            <button key={item.label} onClick={item.action}
-              style={{
-                background: item.danger ? 'rgba(229,62,62,0.15)' : C.night,
-                color: item.danger ? '#ff6b6b' : C.amber,
-                border: `1.5px solid ${item.danger ? 'rgba(229,62,62,0.3)' : 'rgba(232,168,56,0.3)'}`,
-                borderRadius: 100,
-                padding: '10px 20px',
-                fontSize: 13, fontFamily: fonts.ui, fontWeight: 600,
-                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 7,
-                boxShadow: '0 4px 20px rgba(0,0,0,0.2)',
-                backdropFilter: 'blur(12px)',
-                letterSpacing: '-0.01em',
-                whiteSpace: 'nowrap',
-              }}>
+            <button key={item.label} onClick={item.action} style={{ background:item.danger?'rgba(229,62,62,0.9)':'rgba(255,255,255,0.95)', color:item.danger?'#fff':'#111', border:'none', borderRadius:100, padding:'11px 22px', fontSize:14, fontFamily:'Geist, sans-serif', fontWeight:600, cursor:'pointer', boxShadow:'0 4px 20px rgba(0,0,0,0.15)', backdropFilter:'blur(12px)', whiteSpace:'nowrap' }}>
               {item.label}
             </button>
           ))}
         </div>
-        {/* Cancel */}
-        <button onClick={onClose}
-          style={{ background: 'rgba(13,17,23,0.8)', color: 'rgba(255,255,255,0.35)', border: '1.5px solid rgba(255,255,255,0.08)', borderRadius: 100, padding: '11px', fontSize: 13, fontFamily: fonts.ui, fontWeight: 500, cursor: 'pointer', backdropFilter: 'blur(12px)', boxShadow: '0 2px 12px rgba(0,0,0,0.2)' }}>
-          Cancel
-        </button>
+        <button onClick={onClose} style={{ background:'rgba(255,255,255,0.85)', color:'#999', border:'none', borderRadius:100, padding:'11px', fontSize:14, fontFamily:'Geist, sans-serif', cursor:'pointer', backdropFilter:'blur(12px)' }}>Cancel</button>
       </div>
     </div>
   )
 }
 
 // ── Add Moment Modal ──────────────────────────────────────────
-function AddMomentModal({ onClose, onAdd, loading, initialFiles = [] }) {
+function AddMomentModal({ onClose, onAdd, loading, initialFiles=[] }) {
   const [caption, setCaption] = useState('')
   const [location, setLocation] = useState('')
   const [coords, setCoords] = useState(null)
   const [gpsLoading, setGpsLoading] = useState(false)
   const [files, setFiles] = useState([])
-  const [previews, setPreviews] = useState([]) // [{ type: 'image'|'video', src: string }]
+  const [previews, setPreviews] = useState([])
   const fileRef = useRef()
 
-  // Load initialFiles passed from camera/gallery FAB
   useEffect(() => {
     if (!initialFiles.length) return
-    const newFiles = []
-    const newPreviews = []
-    let loaded = 0
-    initialFiles.forEach((file, i) => {
+    const newFiles=[], newPrevs=[]
+    let loaded=0
+    initialFiles.forEach((file,i) => {
       newFiles.push(file)
-      if (file.type.startsWith('video/')) {
-        newPreviews[i] = { type: 'video', src: URL.createObjectURL(file) }
-        loaded++
-        if (loaded === initialFiles.length) {
-          setFiles(newFiles)
-          setPreviews(newPreviews)
-        }
-      } else {
-        const r = new FileReader()
-        r.onload = ev => {
-          newPreviews[i] = { type: 'image', src: ev.target.result }
-          loaded++
-          if (loaded === initialFiles.length) {
-            setFiles(newFiles)
-            setPreviews([...newPreviews])
-          }
-        }
-        r.readAsDataURL(file)
-      }
+      if (file.type.startsWith('video/')) { newPrevs[i]={type:'video',src:URL.createObjectURL(file)}; loaded++; if(loaded===initialFiles.length){setFiles(newFiles);setPreviews([...newPrevs])} }
+      else { const r=new FileReader(); r.onload=ev=>{newPrevs[i]={type:'image',src:ev.target.result};loaded++;if(loaded===initialFiles.length){setFiles(newFiles);setPreviews([...newPrevs])}}; r.readAsDataURL(file) }
     })
   }, [])
 
-  // Auto-GPS on open
   useEffect(() => {
     navigator.geolocation?.getCurrentPosition(pos => {
-      setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude })
-      fetch(`https://nominatim.openstreetmap.org/reverse?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&format=json`)
-        .then(r => r.json())
-        .then(d => {
-          const city = d.address?.city || d.address?.town || d.address?.village || ''
-          const country = d.address?.country || ''
-          if (city || country) setLocation([city, country].filter(Boolean).join(', '))
-        }).catch(() => {})
-    }, () => {})
+      setCoords({lat:pos.coords.latitude,lng:pos.coords.longitude})
+      fetch(`https://nominatim.openstreetmap.org/reverse?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&format=json`).then(r=>r.json()).then(d=>{const city=d.address?.city||d.address?.town||d.address?.village||'';const country=d.address?.country||'';if(city||country)setLocation([city,country].filter(Boolean).join(', '))}).catch(()=>{})
+    },()=>{})
   }, [])
 
-  function addFiles(fileList) {
-    Array.from(fileList).forEach(file => {
-      setFiles(f => [...f, file])
-      if (file.type.startsWith('video/')) {
-        setPreviews(p => [...p, { type: 'video', src: URL.createObjectURL(file) }])
-      } else {
-        const r = new FileReader()
-        r.onload = ev => setPreviews(p => [...p, { type: 'image', src: ev.target.result }])
-        r.readAsDataURL(file)
-      }
+  function addFiles(fl) {
+    Array.from(fl).forEach(file => {
+      setFiles(f=>[...f,file])
+      if(file.type.startsWith('video/')) setPreviews(p=>[...p,{type:'video',src:URL.createObjectURL(file)}])
+      else{const r=new FileReader();r.onload=ev=>setPreviews(p=>[...p,{type:'image',src:ev.target.result}]);r.readAsDataURL(file)}
     })
-  }
-
-  function removeFile(i) {
-    setFiles(f => f.filter((_, idx) => idx !== i))
-    setPreviews(p => p.filter((_, idx) => idx !== i))
   }
 
   function getLocation() {
     setGpsLoading(true)
-    navigator.geolocation?.getCurrentPosition(pos => {
-      setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude })
-      fetch(`https://nominatim.openstreetmap.org/reverse?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&format=json`)
-        .then(r => r.json())
-        .then(d => {
-          const city = d.address?.city || d.address?.town || d.address?.village || ''
-          const country = d.address?.country || ''
-          if (city || country) setLocation([city, country].filter(Boolean).join(', '))
-        }).catch(() => {}).finally(() => setGpsLoading(false))
-    }, () => setGpsLoading(false))
+    navigator.geolocation?.getCurrentPosition(pos=>{
+      setCoords({lat:pos.coords.latitude,lng:pos.coords.longitude})
+      fetch(`https://nominatim.openstreetmap.org/reverse?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&format=json`).then(r=>r.json()).then(d=>{const city=d.address?.city||d.address?.town||d.address?.village||'';const country=d.address?.country||'';if(city||country)setLocation([city,country].filter(Boolean).join(', '))}).catch(()=>{}).finally(()=>setGpsLoading(false))
+    },()=>setGpsLoading(false))
   }
-
-  function handlePost() {
-    onAdd({ caption: caption.trim(), location: location.trim(), latitude: coords?.lat, longitude: coords?.lng, imageFiles: files })
-  }
-
-  const fieldStyle = { width: '100%', background: 'transparent', border: 'none', borderBottom: `2px solid ${C.mist}`, padding: '8px 0', fontSize: 15, fontFamily: fonts.ui, color: C.ink, outline: 'none', resize: 'none' }
 
   return (
-    <div onClick={e => e.target === e.currentTarget && onClose()}
-      style={{ position: 'fixed', inset: 0, background: 'rgba(13,17,23,0.7)', zIndex: 300, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-      <div style={{ background: C.parchment, borderRadius: '28px 28px 0 0', width: '100%', maxWidth: 560, maxHeight: '92vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-
-        {/* Handle */}
-        <div style={{ width: 40, height: 4, background: C.mist, borderRadius: 2, margin: '14px auto 12px', flexShrink: 0 }} />
-
-        {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 20px 12px', flexShrink: 0 }}>
-          <div style={{ fontFamily: fonts.display, fontSize: 20, fontStyle: 'italic', color: C.ink }}>New moment</div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: C.dim }}>✕</button>
+    <div onClick={e=>e.target===e.currentTarget&&onClose()} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:300, display:'flex', alignItems:'flex-end', justifyContent:'center' }}>
+      <div style={{ background:'#fff', borderRadius:'24px 24px 0 0', width:'100%', maxWidth:560, maxHeight:'92vh', display:'flex', flexDirection:'column', overflow:'hidden' }}>
+        <div style={{ width:36, height:4, background:'#e8e8e8', borderRadius:2, margin:'12px auto 8px', flexShrink:0 }} />
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'0 18px 10px', flexShrink:0 }}>
+          <div style={{ fontFamily:'Cormorant Garamond, Georgia, serif', fontStyle:'italic', fontSize:20, color:'#111' }}>New moment</div>
+          <button onClick={onClose} style={{ background:'none', border:'none', fontSize:20, cursor:'pointer', color:'#bbb' }}>✕</button>
         </div>
-
-        {/* Scrollable content */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '0 20px' }}>
-
-          {/* Photo/video previews */}
+        <div style={{ flex:1, overflowY:'auto', padding:'0 18px' }}>
           {previews.length > 0 && (
-            <div style={{ display: 'flex', gap: 8, marginBottom: 16, overflowX: 'auto', scrollbarWidth: 'none' }}>
-              {previews.map((item, i) => (
-                <div key={i} style={{ position: 'relative', flexShrink: 0 }}>
-                  {item.type === 'video'
-                    ? <video src={item.src} muted playsInline style={{ width: 100, height: 100, borderRadius: 12, objectFit: 'cover', display: 'block', background: '#000' }} />
-                    : <img src={item.src} alt="" style={{ width: 100, height: 100, borderRadius: 12, objectFit: 'cover', display: 'block' }} />
-                  }
-                  {item.type === 'video' && (
-                    <div style={{ position: 'absolute', bottom: 6, left: 6, background: 'rgba(0,0,0,0.6)', borderRadius: 4, padding: '2px 5px', fontSize: 9, color: '#fff', fontFamily: fonts.ui, fontWeight: 700 }}>▶</div>
-                  )}
-                  <button onClick={() => removeFile(i)} style={{ position: 'absolute', top: -6, right: -6, background: '#e53e3e', color: '#fff', border: 'none', borderRadius: '50%', width: 20, height: 20, fontSize: 11, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>✕</button>
+            <div style={{ display:'flex', gap:8, marginBottom:14, overflowX:'auto', scrollbarWidth:'none' }}>
+              {previews.map((item,i) => (
+                <div key={i} style={{ position:'relative', flexShrink:0 }}>
+                  {item.type==='video' ? <video src={item.src} muted playsInline style={{ width:100, height:100, borderRadius:12, objectFit:'cover', background:'#000' }} /> : <img src={item.src} alt="" style={{ width:100, height:100, borderRadius:12, objectFit:'cover', display:'block' }} />}
+                  <button onClick={()=>{setFiles(f=>f.filter((_,j)=>j!==i));setPreviews(p=>p.filter((_,j)=>j!==i))}} style={{ position:'absolute', top:-6, right:-6, background:'#e53e3e', color:'#fff', border:'none', borderRadius:'50%', width:20, height:20, fontSize:11, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700 }}>✕</button>
                 </div>
               ))}
-              {/* Add more */}
-              <label style={{ width: 100, height: 100, borderRadius: 12, border: `2px dashed ${C.mist}`, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, color: C.dim, fontSize: 24, background: 'rgba(255,255,255,0.4)' }}>
-                ＋
-                <input type="file" multiple accept="image/*,video/*" style={{ display: 'none' }} onChange={e => addFiles(e.target.files)} />
-              </label>
+              <label style={{ width:100, height:100, borderRadius:12, border:'2px dashed #e8e8e8', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', flexShrink:0, color:'#bbb', fontSize:24, background:'#fafafa' }}>＋<input type="file" multiple accept="image/*,video/*" style={{ display:'none' }} onChange={e=>addFiles(e.target.files)} /></label>
             </div>
           )}
-
-          {/* Caption */}
-          <div style={{ marginBottom: 16 }}>
-            <label style={{ fontSize: 10, fontFamily: fonts.ui, fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: C.dim, display: 'block', marginBottom: 4 }}>Caption</label>
-            <textarea rows={3} value={caption} onChange={e => setCaption(e.target.value)} placeholder="What happened?" style={fieldStyle} />
+          <div style={{ marginBottom:14 }}>
+            <textarea rows={3} value={caption} onChange={e=>setCaption(e.target.value)} placeholder="Caption…" style={{ width:'100%', background:'transparent', border:'none', borderBottom:'1.5px solid #e8e8e8', padding:'6px 0', fontSize:15, fontFamily:'Geist, sans-serif', color:'#111', outline:'none', resize:'none' }} />
           </div>
-
-          {/* Location */}
-          <div style={{ marginBottom: 16 }}>
-            <label style={{ fontSize: 10, fontFamily: fonts.ui, fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: C.dim, display: 'block', marginBottom: 4 }}>Location</label>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <input type="text" value={location} onChange={e => setLocation(e.target.value)} placeholder="Where are you?" style={{ ...fieldStyle, flex: 1 }} />
-              <button onClick={getLocation} disabled={gpsLoading}
-                style={{ background: coords ? `${C.sage}22` : 'none', border: `1px solid ${coords ? C.sage : C.mist}`, borderRadius: 8, padding: '5px 10px', fontSize: 11, fontFamily: fonts.ui, fontWeight: 600, cursor: 'pointer', color: coords ? C.sage : C.dim, flexShrink: 0 }}>
-                {gpsLoading ? '…' : coords ? '✓ GPS' : 'Auto'}
-              </button>
-            </div>
+          <div style={{ marginBottom:14, display:'flex', alignItems:'center', gap:8 }}>
+            <input type="text" value={location} onChange={e=>setLocation(e.target.value)} placeholder="Location" style={{ flex:1, background:'transparent', border:'none', borderBottom:'1.5px solid #e8e8e8', padding:'6px 0', fontSize:14, fontFamily:'Geist, sans-serif', color:'#111', outline:'none' }} />
+            <button onClick={getLocation} disabled={gpsLoading} style={{ background:coords?'#e8f5e0':'#f5f5f5', border:`1px solid ${coords?'#7a9e7e':'#e8e8e8'}`, borderRadius:8, padding:'5px 10px', fontSize:11, fontFamily:'Geist, sans-serif', fontWeight:600, cursor:'pointer', color:coords?'#7a9e7e':'#999', flexShrink:0 }}>
+              {gpsLoading?'…':coords?'✓ GPS':'Auto'}
+            </button>
           </div>
-
-          {/* Upload zone — only shown when no previews */}
           {previews.length === 0 && (
-            <div onClick={() => fileRef.current?.click()}
-              style={{ border: `2px dashed ${C.mist}`, borderRadius: 16, padding: '28px 20px', textAlign: 'center', cursor: 'pointer', background: 'rgba(255,255,255,0.4)', marginBottom: 16 }}>
-              <div style={{ fontSize: 28, marginBottom: 6 }}>📎</div>
-              <div style={{ fontSize: 13, fontFamily: fonts.ui, color: C.dim }}>Add photos or videos</div>
+            <div onClick={()=>fileRef.current?.click()} style={{ border:'2px dashed #e8e8e8', borderRadius:14, padding:'24px', textAlign:'center', cursor:'pointer', background:'#fafafa', marginBottom:14 }}>
+              <div style={{ fontSize:26, marginBottom:4 }}>📎</div>
+              <div style={{ fontSize:13, fontFamily:'Geist, sans-serif', color:'#bbb' }}>Add photos or videos</div>
             </div>
           )}
-          <input ref={fileRef} type="file" multiple accept="image/*,video/*" style={{ display: 'none' }} onChange={e => addFiles(e.target.files)} />
+          <input ref={fileRef} type="file" multiple accept="image/*,video/*" style={{ display:'none' }} onChange={e=>addFiles(e.target.files)} />
         </div>
-
-        {/* Post button — fixed at bottom */}
-        <div style={{ padding: '12px 20px 36px', flexShrink: 0, borderTop: `1px solid ${C.mist}` }}>
-          <button onClick={handlePost} disabled={loading}
-            style={{ width: '100%', background: loading ? C.dim : C.night, color: loading ? 'rgba(255,255,255,0.5)' : C.amber, border: 'none', borderRadius: 14, padding: '15px', fontSize: 15, fontWeight: 700, fontFamily: fonts.ui, cursor: loading ? 'not-allowed' : 'pointer', letterSpacing: '0.01em' }}>
-            {loading ? 'Posting…' : 'Post moment'}
+        <div style={{ padding:'10px 18px 32px', flexShrink:0, borderTop:'1px solid #f0f0f0' }}>
+          <button onClick={()=>onAdd({caption:caption.trim(),location:location.trim(),latitude:coords?.lat,longitude:coords?.lng,imageFiles:files})} disabled={loading}
+            style={{ width:'100%', background:loading?'#ccc':'#111', color:'#fff', border:'none', borderRadius:12, padding:'14px', fontSize:15, fontWeight:600, fontFamily:'Geist, sans-serif', cursor:loading?'not-allowed':'pointer' }}>
+            {loading?'Posting…':'Post moment'}
           </button>
         </div>
       </div>
@@ -587,33 +337,15 @@ function AddTripModal({ onClose, onAdd }) {
   const [label, setLabel] = useState('')
   const [emoji, setEmoji] = useState('✈️')
   return (
-    <div onClick={e => e.target === e.currentTarget && onClose()} style={{ position: 'fixed', inset: 0, background: 'rgba(13,17,23,0.6)', zIndex: 300, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-      <div style={{ background: C.parchment, borderRadius: '28px 28px 0 0', padding: '20px 20px 36px', width: '100%', maxWidth: 560, maxHeight: '85vh', overflowY: 'auto' }}>
-        <div style={{ width: 40, height: 4, background: C.mist, borderRadius: 2, margin: '-14px auto 20px' }} />
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-          <div style={{ fontFamily: fonts.display, fontSize: 22, fontStyle: 'italic', color: C.ink }}>New trip</div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: C.dim }}>✕</button>
+    <div onClick={e=>e.target===e.currentTarget&&onClose()} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:300, display:'flex', alignItems:'flex-end', justifyContent:'center' }}>
+      <div style={{ background:'#fff', borderRadius:'24px 24px 0 0', padding:'20px 20px 36px', width:'100%', maxWidth:560 }}>
+        <div style={{ width:36, height:4, background:'#e8e8e8', borderRadius:2, margin:'-8px auto 16px' }} />
+        <div style={{ fontFamily:'Cormorant Garamond, Georgia, serif', fontStyle:'italic', fontSize:20, marginBottom:20, display:'flex', justifyContent:'space-between' }}>New trip <button onClick={onClose} style={{ background:'none', border:'none', fontSize:20, cursor:'pointer', color:'#bbb' }}>✕</button></div>
+        <input type="text" value={label} onChange={e=>setLabel(e.target.value)} placeholder="e.g. Japan 2026" autoFocus style={{ width:'100%', border:'none', borderBottom:'1.5px solid #e8e8e8', padding:'8px 0', fontSize:15, fontFamily:'Geist, sans-serif', outline:'none', marginBottom:18 }} />
+        <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginBottom:20 }}>
+          {EMOJI_OPTIONS.map(e => <button key={e} onClick={()=>setEmoji(e)} style={{ background:emoji===e?'#111':'#f5f5f5', border:'none', borderRadius:10, width:40, height:40, fontSize:20, cursor:'pointer', transition:'all 0.1s' }}>{e}</button>)}
         </div>
-        <div style={{ marginBottom: 20 }}>
-          <label style={{ fontSize: 10, fontFamily: fonts.ui, fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: C.dim, display: 'block', marginBottom: 4 }}>Trip name</label>
-          <input type="text" value={label} onChange={e => setLabel(e.target.value)} placeholder="e.g. Japan 2026" autoFocus
-            style={{ width: '100%', background: 'transparent', border: 'none', borderBottom: `2px solid ${C.mist}`, padding: '8px 0', fontSize: 15, fontFamily: fonts.ui, color: C.ink, outline: 'none' }} />
-        </div>
-        <div style={{ marginBottom: 24 }}>
-          <label style={{ fontSize: 10, fontFamily: fonts.ui, fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: C.dim, display: 'block', marginBottom: 8 }}>Vibe</label>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {EMOJI_OPTIONS.map(e => (
-              <button key={e} onClick={() => setEmoji(e)} style={{ background: emoji === e ? C.night : 'rgba(255,255,255,0.6)', border: `2px solid ${emoji === e ? C.night : 'transparent'}`, borderRadius: 12, width: 42, height: 42, fontSize: 20, cursor: 'pointer', transition: 'all 0.15s' }}>
-                {e}
-              </button>
-            ))}
-          </div>
-        </div>
-        <button onClick={() => { if (label.trim()) { onAdd({ label: label.trim(), emoji }); onClose() } }}
-          disabled={!label.trim()}
-          style={{ width: '100%', background: label.trim() ? C.night : C.dim, color: '#fff', border: 'none', borderRadius: 14, padding: '15px', fontSize: 15, fontWeight: 600, fontFamily: fonts.ui, cursor: label.trim() ? 'pointer' : 'not-allowed' }}>
-          Create trip
-        </button>
+        <button onClick={()=>{if(label.trim()){onAdd({label:label.trim(),emoji});onClose()}}} disabled={!label.trim()} style={{ width:'100%', background:label.trim()?'#111':'#ccc', color:'#fff', border:'none', borderRadius:12, padding:'14px', fontSize:15, fontWeight:600, fontFamily:'Geist, sans-serif', cursor:label.trim()?'pointer':'not-allowed' }}>Create trip</button>
       </div>
     </div>
   )
@@ -622,16 +354,13 @@ function AddTripModal({ onClose, onAdd }) {
 // ── Delete Confirm ────────────────────────────────────────────
 function DeleteConfirmModal({ onClose, onConfirm, loading }) {
   return (
-    <div onClick={e => e.target === e.currentTarget && onClose()} style={{ position: 'fixed', inset: 0, background: 'rgba(13,17,23,0.6)', zIndex: 450, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-      <div style={{ background: '#fff', borderRadius: 24, padding: '32px 28px', width: '100%', maxWidth: 380, textAlign: 'center' }}>
-        <div style={{ fontSize: 40, marginBottom: 12 }}>🗑️</div>
-        <div style={{ fontFamily: fonts.display, fontSize: 22, fontStyle: 'italic', marginBottom: 8, color: C.ink }}>Delete this moment?</div>
-        <div style={{ fontSize: 14, fontFamily: fonts.ui, color: C.dim, lineHeight: 1.6, marginBottom: 28 }}>This permanently removes the moment and all its photos.</div>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button onClick={onClose} style={{ flex: 1, background: C.ghost, border: 'none', borderRadius: 12, padding: '12px', fontSize: 14, fontWeight: 500, fontFamily: fonts.ui, cursor: 'pointer', color: C.ink }}>Keep it</button>
-          <button onClick={onConfirm} disabled={loading} style={{ flex: 1, background: '#e53e3e', color: '#fff', border: 'none', borderRadius: 12, padding: '12px', fontSize: 14, fontWeight: 600, fontFamily: fonts.ui, cursor: 'pointer', opacity: loading ? 0.7 : 1 }}>
-            {loading ? 'Deleting…' : 'Delete'}
-          </button>
+    <div onClick={e=>e.target===e.currentTarget&&onClose()} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:450, display:'flex', alignItems:'center', justifyContent:'center', padding:24 }}>
+      <div style={{ background:'#fff', borderRadius:20, padding:'28px 24px', maxWidth:340, width:'100%', textAlign:'center' }}>
+        <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:22, fontStyle:'italic', marginBottom:8 }}>Delete this moment?</div>
+        <div style={{ fontSize:13, color:'#999', fontFamily:'Geist, sans-serif', marginBottom:24 }}>This permanently removes the moment and all photos.</div>
+        <div style={{ display:'flex', gap:10 }}>
+          <button onClick={onClose} style={{ flex:1, background:'#f5f5f5', border:'none', borderRadius:12, padding:'12px', fontSize:14, fontFamily:'Geist, sans-serif', cursor:'pointer', color:'#444' }}>Keep it</button>
+          <button onClick={onConfirm} disabled={loading} style={{ flex:1, background:'#e53e3e', color:'#fff', border:'none', borderRadius:12, padding:'12px', fontSize:14, fontFamily:'Geist, sans-serif', fontWeight:600, cursor:'pointer', opacity:loading?0.7:1 }}>{loading?'Deleting…':'Delete'}</button>
         </div>
       </div>
     </div>
@@ -641,117 +370,43 @@ function DeleteConfirmModal({ onClose, onConfirm, loading }) {
 // ── Members Panel ─────────────────────────────────────────────
 function MembersPanel({ trips, user, onClose }) {
   const [members, setMembers] = useState([])
-  const [selectedTrip, setSelectedTrip] = useState(trips.filter(t => !t.fixed)[0]?.id ?? null)
+  const [selectedTrip, setSelectedTrip] = useState(trips.filter(t=>!t.fixed)[0]?.id??null)
   const [loading, setLoading] = useState(false)
   const [copyMsg, setCopyMsg] = useState('')
-
-  useEffect(() => {
-    if (!selectedTrip) return
-    supabase.from('trip_members').select('*').eq('trip_id', selectedTrip).order('requested_at').then(({ data }) => setMembers(data ?? []))
-  }, [selectedTrip])
-
-  async function updateStatus(memberId, status) {
-    setLoading(true)
-    const member = members.find(m => m.id === memberId)
-    if (member) {
-      await supabase.from('trip_members').update({ status }).eq('user_id', member.user_id)
-      setMembers(ms => ms.map(m => m.user_id === member.user_id ? { ...m, status } : m))
-    }
-    setLoading(false)
-  }
-
-  async function copyInviteLink(tripId) {
-    const { data } = await supabase.from('trips').select('invite_token').eq('id', tripId).single()
-    if (data?.invite_token) {
-      const link = `${window.location.origin}?join=${data.invite_token}`
-      try {
-        await navigator.clipboard.writeText(link)
-        setCopyMsg('Copied! Send this link to invite someone.')
-      } catch {
-        setCopyMsg(link)
-      }
-    }
-  }
-
-  const pending  = members.filter(m => m.status === 'pending')
-  const approved = members.filter(m => m.status === 'approved')
-
+  useEffect(() => { if(!selectedTrip)return; supabase.from('trip_members').select('*').eq('trip_id',selectedTrip).order('requested_at').then(({data})=>setMembers(data??[])) }, [selectedTrip])
+  async function updateStatus(memberId,status) { setLoading(true); const m=members.find(x=>x.id===memberId); if(m){await supabase.from('trip_members').update({status}).eq('user_id',m.user_id);setMembers(ms=>ms.map(x=>x.user_id===m.user_id?{...x,status}:x))} setLoading(false) }
+  async function copyInviteLink(tripId) { const{data}=await supabase.from('trips').select('invite_token').eq('id',tripId).single(); if(data?.invite_token){const l=`${window.location.origin}?join=${data.invite_token}`;try{await navigator.clipboard.writeText(l);setCopyMsg('Copied! Send this to invite someone.')}catch{setCopyMsg(l)}} }
+  const pending=members.filter(m=>m.status==='pending'), approved=members.filter(m=>m.status==='approved')
   return (
-    <div onClick={e => e.target === e.currentTarget && onClose()} style={{ position: 'fixed', inset: 0, background: 'rgba(13,17,23,0.5)', zIndex: 300, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-      <div style={{ background: C.parchment, borderRadius: '28px 28px 0 0', padding: '24px 24px 40px', width: '100%', maxWidth: 560, maxHeight: '85vh', overflowY: 'auto' }}>
-        <div style={{ width: 40, height: 4, background: C.mist, borderRadius: 2, margin: '-10px auto 20px' }} />
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <div style={{ fontFamily: fonts.display, fontSize: 22, fontStyle: 'italic', color: C.ink }}>Trip members</div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: C.dim }}>✕</button>
+    <div onClick={e=>e.target===e.currentTarget&&onClose()} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.4)', zIndex:300, display:'flex', alignItems:'flex-end', justifyContent:'center' }}>
+      <div style={{ background:'#fff', borderRadius:'24px 24px 0 0', padding:'20px 20px 40px', width:'100%', maxWidth:560, maxHeight:'85vh', overflowY:'auto' }}>
+        <div style={{ width:36, height:4, background:'#e8e8e8', borderRadius:2, margin:'-8px auto 16px' }} />
+        <div style={{ fontFamily:'Cormorant Garamond, serif', fontStyle:'italic', fontSize:20, marginBottom:16, display:'flex', justifyContent:'space-between' }}>Trip members <button onClick={onClose} style={{ background:'none', border:'none', fontSize:20, cursor:'pointer', color:'#bbb' }}>✕</button></div>
+        <div style={{ display:'flex', gap:8, marginBottom:16, overflowX:'auto' }}>
+          {trips.filter(t=>!t.fixed).map(t => <button key={t.id} onClick={()=>{setSelectedTrip(t.id);setCopyMsg('')}} style={{ background:selectedTrip===t.id?'#111':'#f5f5f5', color:selectedTrip===t.id?'#fff':'#444', border:'none', borderRadius:100, padding:'6px 14px', fontSize:13, fontFamily:'Geist, sans-serif', fontWeight:600, cursor:'pointer', whiteSpace:'nowrap' }}>{t.emoji} {t.label}</button>)}
         </div>
-
-        <div style={{ display: 'flex', gap: 8, marginBottom: 20, overflowX: 'auto' }}>
-          {trips.filter(t => !t.fixed).map(t => (
-            <button key={t.id} onClick={() => { setSelectedTrip(t.id); setCopyMsg('') }}
-              style={{ background: selectedTrip === t.id ? C.night : 'rgba(255,255,255,0.6)', color: selectedTrip === t.id ? '#fff' : C.ink, border: 'none', borderRadius: 100, padding: '7px 16px', fontSize: 13, fontFamily: fonts.ui, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', transition: 'all 0.15s' }}>
-              {t.emoji} {t.label}
-            </button>
-          ))}
-        </div>
-
-        {selectedTrip && (
-          <>
-            <div style={{ background: 'rgba(255,255,255,0.7)', borderRadius: 16, padding: '14px 18px', marginBottom: 16 }}>
-              <div style={{ fontSize: 13, fontFamily: fonts.ui, fontWeight: 600, color: C.ink, marginBottom: 3 }}>Invite link</div>
-              <div style={{ fontSize: 12, fontFamily: fonts.ui, color: C.dim, marginBottom: 12 }}>Anyone with this link can request to join. You approve or reject.</div>
-              <button onClick={() => copyInviteLink(selectedTrip)}
-                style={{ background: C.night, color: C.amber, border: `1.5px solid rgba(232,168,56,0.3)`, borderRadius: 10, padding: '9px 18px', fontSize: 13, fontFamily: fonts.ui, fontWeight: 600, cursor: 'pointer' }}>
-                Copy invite link 🔗
-              </button>
-              {copyMsg && <div style={{ marginTop: 10, fontSize: 12, fontFamily: fonts.ui, color: C.sage, fontWeight: 500, wordBreak: 'break-all' }}>{copyMsg}</div>}
-            </div>
-
-            {pending.length > 0 && (
-              <div style={{ marginBottom: 16 }}>
-                <div style={{ fontSize: 10, fontFamily: fonts.ui, fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: C.dim, marginBottom: 10 }}>Pending ({pending.length})</div>
-                {pending.map(m => (
-                  <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: `1px solid ${C.mist}` }}>
-                    <Avatar src={m.user_avatar} name={m.user_name} size={38} />
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 13, fontFamily: fonts.ui, fontWeight: 600, color: C.ink }}>{m.user_name}</div>
-                      <div style={{ fontSize: 11, fontFamily: fonts.ui, color: C.dim }}>{m.user_email}</div>
-                    </div>
-                    <button onClick={() => updateStatus(m.id, 'approved')} disabled={loading}
-                      style={{ background: 'rgba(122,158,126,0.15)', color: C.sage, border: `1.5px solid rgba(122,158,126,0.3)`, borderRadius: 8, padding: '7px 14px', fontSize: 12, fontFamily: fonts.ui, fontWeight: 600, cursor: 'pointer', marginRight: 6 }}>
-                      Approve
-                    </button>
-                    <button onClick={() => updateStatus(m.id, 'rejected')} disabled={loading}
-                      style={{ background: 'rgba(229,62,62,0.1)', color: '#ff6b6b', border: '1.5px solid rgba(229,62,62,0.2)', borderRadius: 8, padding: '7px 14px', fontSize: 12, fontFamily: fonts.ui, fontWeight: 600, cursor: 'pointer' }}>
-                      Reject
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {approved.length > 0 && (
-              <div>
-                <div style={{ fontSize: 10, fontFamily: fonts.ui, fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: C.dim, marginBottom: 10 }}>Members ({approved.length})</div>
-                {approved.map(m => (
-                  <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: `1px solid ${C.mist}` }}>
-                    <Avatar src={m.user_avatar} name={m.user_name} size={38} />
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 13, fontFamily: fonts.ui, fontWeight: 600, color: C.ink }}>{m.user_name}</div>
-                      <div style={{ fontSize: 11, fontFamily: fonts.ui, color: C.dim }}>{m.user_email}</div>
-                    </div>
-                    <div style={{ fontSize: 11, fontFamily: fonts.ui, background: `${C.sage}22`, color: C.sage, borderRadius: 100, padding: '4px 12px', fontWeight: 600 }}>✓ Member</div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {pending.length === 0 && approved.length === 0 && (
-              <div style={{ textAlign: 'center', padding: '32px 0', color: C.dim, fontSize: 14, fontFamily: fonts.ui, fontStyle: 'italic' }}>
-                No members yet — share the invite link!
-              </div>
-            )}
-          </>
-        )}
+        {selectedTrip && (<>
+          <div style={{ background:'#fafafa', borderRadius:12, padding:'12px 16px', marginBottom:14 }}>
+            <div style={{ fontSize:13, fontFamily:'Geist, sans-serif', fontWeight:600, marginBottom:4 }}>Invite link</div>
+            <div style={{ fontSize:12, color:'#999', fontFamily:'Geist, sans-serif', marginBottom:10 }}>Anyone with this link can request to join.</div>
+            <button onClick={()=>copyInviteLink(selectedTrip)} style={{ background:'#111', color:'#fff', border:'none', borderRadius:8, padding:'8px 16px', fontSize:12, fontFamily:'Geist, sans-serif', fontWeight:600, cursor:'pointer' }}>Copy invite link</button>
+            {copyMsg && <div style={{ marginTop:8, fontSize:12, color:'#7a9e7e', fontFamily:'Geist, sans-serif', wordBreak:'break-all' }}>{copyMsg}</div>}
+          </div>
+          {pending.length > 0 && <><div style={{ fontSize:11, fontFamily:'Geist, sans-serif', fontWeight:600, letterSpacing:'0.08em', textTransform:'uppercase', color:'#999', marginBottom:8 }}>Pending ({pending.length})</div>
+          {pending.map(m => <div key={m.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 0', borderBottom:'1px solid #f0f0f0' }}>
+            <Avatar src={m.user_avatar} name={m.user_name} size={36} />
+            <div style={{ flex:1 }}><div style={{ fontSize:13, fontFamily:'Geist, sans-serif', fontWeight:600 }}>{m.user_name}</div><div style={{ fontSize:11, color:'#999', fontFamily:'Geist, sans-serif' }}>{m.user_email}</div></div>
+            <button onClick={()=>updateStatus(m.id,'approved')} disabled={loading} style={{ background:'#e8f5e0', color:'#7a9e7e', border:'1px solid #c8e6c9', borderRadius:8, padding:'6px 12px', fontSize:12, fontFamily:'Geist, sans-serif', fontWeight:600, cursor:'pointer', marginRight:4 }}>Approve</button>
+            <button onClick={()=>updateStatus(m.id,'rejected')} disabled={loading} style={{ background:'#fff0f0', color:'#e53e3e', border:'1px solid #ffcdd2', borderRadius:8, padding:'6px 12px', fontSize:12, fontFamily:'Geist, sans-serif', fontWeight:600, cursor:'pointer' }}>Reject</button>
+          </div>)}</>}
+          {approved.length > 0 && <><div style={{ fontSize:11, fontFamily:'Geist, sans-serif', fontWeight:600, letterSpacing:'0.08em', textTransform:'uppercase', color:'#999', margin:'14px 0 8px' }}>Members ({approved.length})</div>
+          {approved.map(m => <div key={m.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 0', borderBottom:'1px solid #f0f0f0' }}>
+            <Avatar src={m.user_avatar} name={m.user_name} size={36} />
+            <div style={{ flex:1 }}><div style={{ fontSize:13, fontFamily:'Geist, sans-serif', fontWeight:600 }}>{m.user_name}</div><div style={{ fontSize:11, color:'#999' }}>{m.user_email}</div></div>
+            <div style={{ fontSize:11, background:'#e8f5e0', color:'#7a9e7e', borderRadius:100, padding:'3px 10px', fontFamily:'Geist, sans-serif', fontWeight:600 }}>✓</div>
+          </div>)}</>}
+          {pending.length===0&&approved.length===0 && <div style={{ textAlign:'center', padding:'24px 0', color:'#bbb', fontFamily:'Geist, sans-serif', fontSize:14, fontStyle:'italic' }}>No members yet — share the invite link!</div>}
+        </>)}
       </div>
     </div>
   )
@@ -760,19 +415,15 @@ function MembersPanel({ trips, user, onClose }) {
 // ── Join Banner ───────────────────────────────────────────────
 function JoinBanner({ joinState, onClose }) {
   if (!joinState) return null
-  const config = {
-    pending:  { icon: '⏳', title: 'Request sent!', sub: `Your request to join "${joinState.trip.name}" is pending. You can post once approved.` },
-    approved: { icon: '✅', title: "You're in!", sub: `You can now post to "${joinState.trip.name}".` },
-    rejected: { icon: '❌', title: 'Not approved', sub: `Your request to join "${joinState.trip.name}" was not approved.` },
-  }
-  const c = config[joinState.status] ?? config.pending
+  const cfg = { pending:{icon:'⏳',title:'Request sent!',sub:`Pending approval for "${joinState.trip.name}".`}, approved:{icon:'✅',title:"You're in!",sub:`You can now post to "${joinState.trip.name}".`}, rejected:{icon:'❌',title:'Not approved',sub:`Your request to join "${joinState.trip.name}" was not approved.`} }
+  const c = cfg[joinState.status] ?? cfg.pending
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(13,17,23,0.6)', zIndex: 400, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-      <div style={{ background: '#fff', borderRadius: 24, padding: '40px 32px', width: '100%', maxWidth: 380, textAlign: 'center' }}>
-        <div style={{ fontSize: 52, marginBottom: 16 }}>{c.icon}</div>
-        <div style={{ fontFamily: fonts.display, fontSize: 26, fontStyle: 'italic', marginBottom: 10, color: C.ink }}>{c.title}</div>
-        <div style={{ fontSize: 14, fontFamily: fonts.ui, color: C.dim, lineHeight: 1.6, marginBottom: 28 }}>{c.sub}</div>
-        <button onClick={onClose} style={{ background: C.night, color: '#fff', border: 'none', borderRadius: 12, padding: '12px 32px', fontSize: 14, fontWeight: 600, fontFamily: fonts.ui, cursor: 'pointer' }}>Got it</button>
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:400, display:'flex', alignItems:'center', justifyContent:'center', padding:24 }}>
+      <div style={{ background:'#fff', borderRadius:20, padding:'36px 28px', maxWidth:360, width:'100%', textAlign:'center' }}>
+        <div style={{ fontSize:48, marginBottom:12 }}>{c.icon}</div>
+        <div style={{ fontFamily:'Cormorant Garamond, serif', fontStyle:'italic', fontSize:24, marginBottom:8 }}>{c.title}</div>
+        <div style={{ fontSize:13, color:'#999', fontFamily:'Geist, sans-serif', lineHeight:1.6, marginBottom:24 }}>{c.sub}</div>
+        <button onClick={onClose} style={{ background:'#111', color:'#fff', border:'none', borderRadius:12, padding:'12px 32px', fontSize:14, fontFamily:'Geist, sans-serif', fontWeight:600, cursor:'pointer' }}>Got it</button>
       </div>
     </div>
   )
@@ -783,25 +434,25 @@ export function TimelinePage() {
   const { user, signInWithGoogle, signOut } = useAuth()
   const [trips, setTrips] = useState(DEFAULT_TRIPS)
   const [activeSlug, setActiveSlug] = useState('today')
+  const [activeDay, setActiveDay] = useState(null)
   const [showAddMoment, setShowAddMoment] = useState(false)
   const [showAddTrip, setShowAddTrip] = useState(false)
   const [showMembers, setShowMembers] = useState(false)
+  const [showAccountMenu, setShowAccountMenu] = useState(false)
   const [menuMoment, setMenuMoment] = useState(null)
   const [deleteMoment, setDeleteMoment] = useState(null)
-  const [posting, setPosting] = useState(false)
-  const [galleryFiles, setGalleryFiles] = useState([])
   const [recapDay, setRecapDay] = useState(null)
   const [showTripBook, setShowTripBook] = useState(false)
+  const [posting, setPosting] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [galleryFiles, setGalleryFiles] = useState([])
   const [toast, setToast] = useState('')
 
-  const [showAccountMenu, setShowAccountMenu] = useState(false)
-  const [activeDay, setActiveDay] = useState(null)
-  const [momentCache, setMomentCache] = useState({})
   const showToast = msg => { setToast(msg); setTimeout(() => setToast(''), 3000) }
   const joinState = useJoinRequest(trips, user, showToast)
 
   useEffect(() => { loadTripCovers(trips, setTrips) }, [])
+  useEffect(() => { setActiveDay(null) }, [activeSlug])
 
   const activeTrip = trips.find(t => t.slug === activeSlug)
   const { moments, loading, addMoment, toggleReaction, refetch, setMoments } = useMoments(activeTrip?.id ?? null)
@@ -820,364 +471,225 @@ export function TimelinePage() {
     }, {}), [visibleMoments])
 
   const days = Object.keys(grouped)
+  const visibleDays = activeDay ? [activeDay] : days
 
-  function handleReact(momentId, emoji) {
-    if (!user) return
-    toggleReaction(momentId, user.id, emoji)
-  }
+  function handleReact(momentId, emoji) { if (!user) return; toggleReaction(momentId, user.id, emoji) }
 
   async function handleAddMoment(payload) {
     if (!user) return
     setPosting(true)
-    try {
-      await addMoment({ ...payload, userId: user.id, userName: user.user_metadata?.full_name ?? user.email, userAvatar: user.user_metadata?.avatar_url ?? null, latitude: payload.latitude, longitude: payload.longitude })
-      setShowAddMoment(false)
-      showToast('Moment posted ✨')
-    } catch(e) { console.error(e); showToast('Failed: ' + e.message) }
+    try { await addMoment({ ...payload, userId:user.id, userName:user.user_metadata?.full_name??user.email, userAvatar:user.user_metadata?.avatar_url??null }); setShowAddMoment(false); setGalleryFiles([]); showToast('Moment posted ✨') }
+    catch(e) { showToast('Error: '+e.message) }
     finally { setPosting(false) }
   }
 
   async function handleAddTrip({ label, emoji }) {
-    const { data, error } = await supabase.from('trips').insert({ user_id: user.id, name: label, is_public: true }).select().single()
-    if (error) { showToast('Failed to create trip'); return }
-    const slug = label.toLowerCase().replace(/\s+/g, '-') + '-' + Date.now()
-    setTrips(t => [...t, { id: data.id, slug, label, emoji }])
+    const { data, error } = await supabase.from('trips').insert({ user_id:user.id, name:label, is_public:true }).select().single()
+    if (error) { showToast('Failed'); return }
+    const slug = label.toLowerCase().replace(/\s+/g,'-')+'-'+Date.now()
+    setTrips(t => [...t, { id:data.id, slug, label, emoji }])
     setActiveSlug(slug)
     showToast(`${emoji} ${label} created!`)
   }
 
   async function handleCoverUpload(e, slug) {
-    const file = e.target.files[0]
-    if (!file || !user) return
-    const trip = trips.find(t => t.slug === slug)
-    if (!trip) return
+    const file = e.target.files[0]; if (!file||!user) return
+    const trip = trips.find(t=>t.slug===slug); if (!trip) return
     const ext = file.name.split('.').pop()
     const path = `covers/${trip.id}.${ext}`
-    const { error } = await supabase.storage.from('moment-images').upload(path, file, { upsert: true })
-    if (error) { showToast('Cover upload failed'); return }
-    const { data: { publicUrl } } = supabase.storage.from('moment-images').getPublicUrl(path)
-    await supabase.from('trips').update({ cover_url: publicUrl }).eq('id', trip.id)
-    setTrips(ts => ts.map(t => t.slug === slug ? { ...t, cover: publicUrl } : t))
-    showToast('Cover updated 🖼️')
+    const { error } = await supabase.storage.from('moment-images').upload(path, file, { upsert:true })
+    if (error) { showToast('Upload failed'); return }
+    const { data:{ publicUrl } } = supabase.storage.from('moment-images').getPublicUrl(path)
+    await supabase.from('trips').update({ cover_url:publicUrl }).eq('id', trip.id)
+    setTrips(ts => ts.map(t => t.slug===slug ? {...t, cover:publicUrl} : t))
+    showToast('Cover updated!')
   }
 
   async function handleDelete() {
     if (!deleteMoment) return
     setDeleting(true)
     const toDelete = deleteMoment
-    // Optimistic remove — instant
     setDeleteMoment(null)
     setMoments(ms => ms.filter(m => m.id !== toDelete.id))
     try {
-      for (const img of toDelete.moment_images ?? []) {
-        const path = img.url.split('/moment-images/')[1]
-        if (path) await supabase.storage.from('moment-images').remove([decodeURIComponent(path)])
-      }
+      for (const img of toDelete.moment_images??[]) { const path=img.url.split('/moment-images/')[1]; if(path)await supabase.storage.from('moment-images').remove([decodeURIComponent(path)]) }
       await supabase.from('moments').delete().eq('id', toDelete.id)
       showToast('Moment deleted')
-    } catch {
-      showToast('Delete failed')
-      refetch() // Only refetch on error to restore state
-    }
+    } catch { showToast('Delete failed'); refetch() }
     finally { setDeleting(false) }
   }
-
-  // Reset activeDay when switching tabs
-  useEffect(() => { setActiveDay(null) }, [activeSlug])
 
   const allTabs = [...trips, UPCOMING_TAB]
 
   return (
-    <div style={{ fontFamily: fonts.ui, minHeight: '100vh', color: C.ink, position: 'relative' }}>
-      {/* Animated mesh background */}
-      <div style={{ position: 'fixed', inset: 0, zIndex: 0, background: 'linear-gradient(135deg, #f5f0e8 0%, #fce4e4 25%, #e8f4f8 50%, #f0e8f5 75%, #f5f0e8 100%)', backgroundSize: '400% 400%', animation: 'meshMove 18s ease infinite', pointerEvents: 'none' }} />
+    <div style={{ fontFamily:'Geist, Inter, sans-serif', minHeight:'100vh', color:'#111' }}>
       <style>{`
-        * { -webkit-tap-highlight-color: transparent; }
-        button, label { -webkit-tap-highlight-color: transparent; }
-        .tab-content { animation: fadeIn 0.15s ease; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes meshMove {
-          0% { background-position: 0% 50%; }
-          50% { background-position: 100% 50%; }
-          100% { background-position: 0% 50%; }
-        }
-        img, video { will-change: transform; }
+        @keyframes meshMove { 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
+        * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
         ::-webkit-scrollbar { display: none; }
-        .day-pill-scroll::-webkit-scrollbar { display: none; }
+        .fade-in { animation: fadeIn 0.15s ease; }
+        @keyframes fadeIn { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
       `}</style>
 
-      {/* ── Header ── */}
-      <header style={{ position: 'sticky', top: 0, zIndex: 100, background: 'rgba(13,17,23,0.92)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)' }}>
+      {/* Animated background */}
+      <div style={{ position:'fixed', inset:0, zIndex:0, background:'linear-gradient(135deg, #fef9f0 0%, #fce8e8 20%, #e8f4fc 40%, #f0e8fc 60%, #e8fce8 80%, #fef9f0 100%)', backgroundSize:'500% 500%', animation:'meshMove 20s ease infinite', pointerEvents:'none' }} />
 
-        {/* Top bar */}
-        <div style={{ padding: '0 20px', height: 56, display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-          {/* Logo */}
-          <div style={{ fontFamily: fonts.display, fontStyle: 'italic', fontSize: 24, color: C.amber, letterSpacing: '-0.01em', userSelect: 'none' }}>
-            wanderlog
+      <div style={{ position:'relative', zIndex:1 }}>
+
+        {/* ── Header ── */}
+        <header style={{ position:'sticky', top:0, zIndex:100, background:'rgba(13,13,13,0.88)', backdropFilter:'blur(20px)', WebkitBackdropFilter:'blur(20px)' }}>
+          {/* Top bar */}
+          <div style={{ padding:'0 20px', height:52, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+            <div style={{ fontFamily:'Cormorant Garamond, Georgia, serif', fontStyle:'italic', fontSize:22, color:'#F5C842', letterSpacing:'-0.01em' }}>wanderlog</div>
+            {user ? (
+              <div style={{ position:'relative' }}>
+                <button onClick={()=>setShowAccountMenu(m=>!m)} style={{ background:'none', border:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:6, padding:'4px 0' }}>
+                  <Avatar src={user.user_metadata?.avatar_url} name={user.email} size={30} />
+                  <span style={{ color:'rgba(255,255,255,0.4)', fontSize:11 }}>{showAccountMenu?'▲':'▼'}</span>
+                </button>
+                {showAccountMenu && (<>
+                  <div onClick={()=>setShowAccountMenu(false)} style={{ position:'fixed', inset:0, zIndex:98 }} />
+                  <div style={{ position:'absolute', top:42, right:0, background:'rgba(20,20,20,0.96)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:14, minWidth:180, boxShadow:'0 8px 32px rgba(0,0,0,0.4)', zIndex:99, overflow:'hidden', backdropFilter:'blur(12px)' }}>
+                    <div style={{ padding:'12px 14px', borderBottom:'1px solid rgba(255,255,255,0.07)' }}>
+                      <div style={{ fontSize:13, fontFamily:'Geist, sans-serif', fontWeight:600, color:'#fff' }}>{user.user_metadata?.full_name??'Traveller'}</div>
+                      <div style={{ fontSize:11, color:'rgba(255,255,255,0.35)', marginTop:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{user.email}</div>
+                    </div>
+                    {user.email===ADMIN_EMAIL && <button onClick={()=>{setShowMembers(true);setShowAccountMenu(false)}} style={{ width:'100%', background:'none', border:'none', padding:'11px 14px', color:'rgba(255,255,255,0.7)', fontFamily:'Geist, sans-serif', fontSize:13, textAlign:'left', cursor:'pointer' }}>Members</button>}
+                    <button onClick={()=>{signOut();setShowAccountMenu(false)}} style={{ width:'100%', background:'none', border:'none', padding:'11px 14px', color:'#ff6b6b', fontFamily:'Geist, sans-serif', fontSize:13, textAlign:'left', cursor:'pointer' }}>Sign out</button>
+                  </div>
+                </>)}
+              </div>
+            ) : (
+              <button onClick={signInWithGoogle} style={{ background:'#F5C842', color:'#111', border:'none', borderRadius:10, padding:'7px 16px', fontSize:13, fontFamily:'Geist, sans-serif', fontWeight:700, cursor:'pointer' }}>Sign in</button>
+            )}
           </div>
 
-          {/* Right — account */}
-          {user ? (
-            <div style={{ position: 'relative' }}>
-              <button onClick={() => setShowAccountMenu(m => !m)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
-                <Avatar src={user.user_metadata?.avatar_url} name={user.email} size={32} />
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                  <path d={showAccountMenu ? 'M2 8 L6 4 L10 8' : 'M2 4 L6 8 L10 4'} stroke="rgba(255,255,255,0.4)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
+          {/* Tab bar */}
+          <div style={{ display:'flex', overflowX:'auto', scrollbarWidth:'none', borderTop:'1px solid rgba(255,255,255,0.06)', padding:'0 4px' }}>
+            {allTabs.map(tab => (
+              <button key={tab.slug} onClick={()=>setActiveSlug(tab.slug)}
+                style={{ background:'none', border:'none', borderBottom:`2px solid ${activeSlug===tab.slug?'#F5C842':'transparent'}`, color:activeSlug===tab.slug?'#fff':'rgba(255,255,255,0.35)', padding:'10px 16px', fontSize:13, fontFamily:'Geist, sans-serif', fontWeight:activeSlug===tab.slug?600:400, cursor:'pointer', whiteSpace:'nowrap', flexShrink:0, transition:'all 0.15s' }}>
+                {tab.emoji} {tab.label}
               </button>
+            ))}
+            {user && <button onClick={()=>setShowAddTrip(true)} style={{ background:'none', border:'none', borderBottom:'2px solid transparent', color:'rgba(255,255,255,0.25)', padding:'10px 14px', fontSize:18, cursor:'pointer', flexShrink:0 }}>＋</button>}
+          </div>
+        </header>
 
-              {/* Dropdown */}
-              {showAccountMenu && (
-                <>
-                  <div onClick={() => setShowAccountMenu(false)} style={{ position: 'fixed', inset: 0, zIndex: 98 }} />
-                  <div style={{ position: 'absolute', top: 44, right: 0, background: C.night, border: '1px solid rgba(255,255,255,0.1)', borderRadius: 16, minWidth: 200, boxShadow: '0 8px 32px rgba(0,0,0,0.4)', zIndex: 99, overflow: 'hidden' }}>
-                    {/* User info */}
-                    <div style={{ padding: '14px 16px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-                      <div style={{ fontSize: 13, fontFamily: fonts.ui, fontWeight: 600, color: '#fff' }}>{user.user_metadata?.full_name ?? 'Traveller'}</div>
-                      <div style={{ fontSize: 11, fontFamily: fonts.ui, color: 'rgba(255,255,255,0.35)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.email}</div>
-                    </div>
-                    {/* Menu items */}
-                    {[
-                      ...(user.email === ADMIN_EMAIL ? [{ label: 'Members', action: () => { setShowMembers(true); setShowAccountMenu(false) } }] : []),
-                      { label: 'Sign out', action: () => { signOut(); setShowAccountMenu(false) }, danger: true },
-                    ].map(item => (
-                      <button key={item.label} onClick={item.action}
-                        style={{ width: '100%', background: 'none', border: 'none', padding: '12px 16px', display: 'flex', alignItems: 'center', cursor: 'pointer', color: item.danger ? '#ff6b6b' : 'rgba(255,255,255,0.75)', fontFamily: fonts.ui, fontSize: 13, textAlign: 'left', transition: 'background 0.1s' }}
-                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
-                        onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-                        {item.label}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-          ) : (
-            <button onClick={signInWithGoogle}
-              style={{ background: C.amber, color: C.night, border: 'none', borderRadius: 10, padding: '8px 18px', fontSize: 13, fontFamily: fonts.ui, fontWeight: 700, cursor: 'pointer' }}>
-              Sign in
-            </button>
-          )}
-        </div>
+        {/* ── Upcoming ── */}
+        {activeSlug === 'upcoming' && (
+          <div style={{ maxWidth:560, margin:'0 auto', padding:'52px 20px', textAlign:'center' }}>
+            <div style={{ fontSize:48, marginBottom:12 }}>🗺️</div>
+            <div style={{ fontFamily:'Cormorant Garamond, serif', fontStyle:'italic', fontSize:26, marginBottom:8 }}>More trips coming</div>
+            <div style={{ fontSize:14, color:'#888', fontFamily:'Geist, sans-serif', marginBottom:32 }}>Future adventures will appear here.</div>
+            {user && <button onClick={()=>setShowAddTrip(true)} style={{ background:'#111', color:'#fff', border:'none', borderRadius:12, padding:'12px 28px', fontSize:14, fontFamily:'Geist, sans-serif', fontWeight:600, cursor:'pointer' }}>+ Add a trip</button>}
+          </div>
+        )}
 
-        {/* Tab bar */}
-        <div style={{ display: 'flex', overflowX: 'auto', scrollbarWidth: 'none', alignItems: 'center' }}>
-          {allTabs.map(tab => (
-            <button key={tab.slug} onClick={() => setActiveSlug(tab.slug)}
-              style={{ background: 'none', border: 'none', borderBottom: activeSlug === tab.slug ? `2px solid ${C.amber}` : '2px solid transparent', color: activeSlug === tab.slug ? '#fff' : 'rgba(255,255,255,0.35)', padding: '11px 18px', fontSize: 13, fontFamily: fonts.ui, fontWeight: activeSlug === tab.slug ? 600 : 400, cursor: 'pointer', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, letterSpacing: '-0.01em', transition: 'all 0.15s' }}>
-              {tab.emoji} {tab.label}
-            </button>
-          ))}
-          {user && (
-            <button onClick={() => setShowAddTrip(true)}
-              style={{ background: 'none', border: 'none', borderBottom: '2px solid transparent', color: 'rgba(255,255,255,0.3)', padding: '11px 14px', fontSize: 20, cursor: 'pointer', flexShrink: 0, transition: 'color 0.15s' }}
-              onMouseEnter={e => e.currentTarget.style.color = C.amber}
-              onMouseLeave={e => e.currentTarget.style.color = 'rgba(255,255,255,0.3)'}>
-              ＋
-            </button>
-          )}
-        </div>
-      </header>
+        {/* ── Feed ── */}
+        {activeSlug !== 'upcoming' && (
+          <div className="fade-in" style={{ maxWidth:560, margin:'0 auto', padding:'0 14px 100px' }}
+            onTouchStart={e=>{window._swX=e.touches[0].clientX}}
+            onTouchEnd={e=>{const d=window._swX-e.changedTouches[0].clientX;const slugs=[...trips.map(t=>t.slug),'upcoming'];const idx=slugs.indexOf(activeSlug);if(d>60&&idx<slugs.length-1)setActiveSlug(slugs[idx+1]);if(d<-60&&idx>0)setActiveSlug(slugs[idx-1])}}>
 
-      {/* ── Upcoming ── */}
-      {activeSlug === 'upcoming' && (
-        <div style={{ maxWidth: 560, margin: '0 auto', padding: '52px 20px', textAlign: 'center' }}>
-          <div style={{ fontSize: 52, marginBottom: 16 }}>🗺️</div>
-          <div style={{ fontFamily: fonts.display, fontSize: 28, fontStyle: 'italic', marginBottom: 10, color: C.ink }}>More trips coming</div>
-          <div style={{ fontSize: 14, fontFamily: fonts.ui, color: C.dim, lineHeight: 1.7, marginBottom: 36 }}>Future adventures will appear here.</div>
-          {[{ name: 'Turkey', emoji: '🇹🇷' }, { name: 'Saudi Arabia', emoji: '🇸🇦' }].map(t => (
-            <div key={t.name} style={{ background: '#fff', borderRadius: 16, padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 14, boxShadow: '0 2px 12px rgba(0,0,0,0.06)', marginBottom: 10 }}>
-              <span style={{ fontSize: 26 }}>{t.emoji}</span>
-              <span style={{ fontWeight: 600, fontFamily: fonts.ui, fontSize: 15 }}>{t.name}</span>
-              <span style={{ marginLeft: 'auto', fontSize: 11, fontFamily: fonts.ui, background: `${C.amber}22`, color: C.rust, borderRadius: 100, padding: '4px 12px', fontWeight: 600 }}>Soon</span>
-            </div>
-          ))}
-          {user && <button onClick={() => setShowAddTrip(true)} style={{ marginTop: 24, background: C.night, color: C.amber, border: `1.5px solid rgba(232,168,56,0.3)`, borderRadius: 14, padding: '13px 32px', fontSize: 14, fontFamily: fonts.ui, fontWeight: 600, cursor: 'pointer' }}>+ Add a trip</button>}
-        </div>
-      )}
-
-      {/* ── Feed ── */}
-      {activeSlug !== 'upcoming' && (
-        <div
-          className="tab-content"
-          style={{ maxWidth: 560, margin: '0 auto', padding: '0 16px 100px' }}
-          onTouchStart={e => { window._swipeX = e.touches[0].clientX }}
-          onTouchEnd={e => {
-            const diff = window._swipeX - e.changedTouches[0].clientX
-            const allTabs = [...trips.map(t => t.slug), 'upcoming']
-            const idx = allTabs.indexOf(activeSlug)
-            if (diff > 60 && idx < allTabs.length - 1) setActiveSlug(allTabs[idx + 1])
-            if (diff < -60 && idx > 0) setActiveSlug(allTabs[idx - 1])
-          }}>
-
-          {/* Trip Hero */}
-          {activeSlug === 'today' ? (
-            <div style={{ padding: '28px 4px 16px', borderBottom: `1px solid ${C.mist}`, marginBottom: 8 }}>
-              <div style={{ fontSize: 10, fontFamily: fonts.ui, fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: C.dim, marginBottom: 4 }}>{format(new Date(), 'EEEE, MMMM d')}</div>
-              <div style={{ fontFamily: fonts.display, fontSize: 32, fontStyle: 'italic', color: C.ink, letterSpacing: '-0.01em' }}>Today's Moments</div>
-            </div>
-          ) : activeTrip?.cover ? (
-            <div style={{ position: 'relative', height: 200, overflow: 'hidden', margin: '0 -16px 0', borderBottom: `1px solid ${C.mist}` }}>
-              <img src={activeTrip.cover} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, transparent 30%, rgba(13,17,23,0.75))' }} />
-              <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '16px 20px', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
-                <div>
-                  <div style={{ fontFamily: fonts.display, fontSize: 28, fontStyle: 'italic', color: '#fff', letterSpacing: '-0.01em' }}>{activeTrip.emoji} {activeTrip.label}</div>
-                  <div style={{ fontSize: 12, fontFamily: fonts.ui, color: 'rgba(255,255,255,0.6)', marginTop: 2 }}>{visibleMoments.length} moments</div>
+            {/* Trip hero */}
+            {activeSlug === 'today' ? (
+              <div style={{ padding:'20px 0 12px', borderBottom:'1px solid rgba(0,0,0,0.06)' }}>
+                <div style={{ fontSize:11, color:'#aaa', fontFamily:'Geist, sans-serif', letterSpacing:'0.1em', textTransform:'uppercase' }}>{format(new Date(),'EEEE, MMMM d')}</div>
+                <div style={{ fontFamily:'Cormorant Garamond, serif', fontStyle:'italic', fontSize:28, color:'#111', marginTop:2 }}>Today's Moments</div>
+              </div>
+            ) : activeTrip?.cover ? (
+              <div style={{ position:'relative', height:180, overflow:'hidden', margin:'0 -14px', borderBottom:'1px solid rgba(0,0,0,0.06)' }}>
+                <img src={activeTrip.cover} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+                <div style={{ position:'absolute', inset:0, background:'linear-gradient(to bottom, transparent 30%, rgba(0,0,0,0.65))' }} />
+                <div style={{ position:'absolute', bottom:0, left:0, right:0, padding:'14px 18px', display:'flex', alignItems:'flex-end', justifyContent:'space-between' }}>
+                  <div><div style={{ fontFamily:'Cormorant Garamond, serif', fontStyle:'italic', fontSize:24, color:'#fff' }}>{activeTrip.emoji} {activeTrip.label}</div><div style={{ fontSize:11, color:'rgba(255,255,255,0.5)', fontFamily:'Geist, sans-serif' }}>{visibleMoments.length} moments</div></div>
+                  {user && <label style={{ background:'rgba(255,255,255,0.15)', border:'1px solid rgba(255,255,255,0.25)', borderRadius:8, padding:'6px 12px', fontSize:11, fontFamily:'Geist, sans-serif', color:'#fff', cursor:'pointer', backdropFilter:'blur(8px)' }}>Change cover<input type="file" accept="image/*" style={{ display:'none' }} onChange={e=>handleCoverUpload(e,activeSlug)} /></label>}
                 </div>
-                {user && (
-                  <label style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 10, padding: '7px 14px', fontSize: 12, fontFamily: fonts.ui, color: '#fff', cursor: 'pointer', backdropFilter: 'blur(8px)' }}>
-                    📷 Change
-                    <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleCoverUpload(e, activeSlug)} />
-                  </label>
+              </div>
+            ) : (
+              <div style={{ padding:'20px 0 12px', borderBottom:'1px solid rgba(0,0,0,0.06)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                <div style={{ fontFamily:'Cormorant Garamond, serif', fontStyle:'italic', fontSize:26, color:'#111' }}>{activeTrip?.emoji} {activeTrip?.label}</div>
+                {user && <label style={{ background:'#f5f5f5', border:'1px solid #e8e8e8', borderRadius:8, padding:'6px 12px', fontSize:11, fontFamily:'Geist, sans-serif', color:'#888', cursor:'pointer' }}>Add cover<input type="file" accept="image/*" style={{ display:'none' }} onChange={e=>handleCoverUpload(e,activeSlug)} /></label>}
+              </div>
+            )}
+
+            {/* Day pills */}
+            {days.length > 0 && (
+              <div style={{ display:'flex', gap:8, padding:'12px 0 4px', overflowX:'auto', scrollbarWidth:'none' }}>
+                {days.map((day, idx) => {
+                  const color = dayColor(idx)
+                  const isActive = activeDay === day
+                  return (
+                    <button key={day} onClick={()=>setActiveDay(activeDay===day?null:day)}
+                      style={{ background:isActive?color:`${color}20`, color:isActive?'#fff':color, border:`2px solid ${color}`, borderRadius:100, padding:'5px 14px', fontSize:12, fontFamily:'Geist, sans-serif', fontWeight:700, cursor:'pointer', whiteSpace:'nowrap', flexShrink:0, transition:'all 0.15s', boxShadow:isActive?`0 2px 10px ${color}55`:'none' }}>
+                      {day} <span style={{ background:isActive?'rgba(255,255,255,0.25)':`${color}30`, borderRadius:100, padding:'1px 6px', fontSize:10, fontWeight:800, marginLeft:2 }}>{grouped[day]?.length}</span>
+                    </button>
+                  )
+                })}
+                {activeSlug !== 'today' && visibleMoments.length > 0 && (
+                  <button onClick={()=>setShowTripBook(true)} style={{ background:'rgba(0,0,0,0.06)', border:'1.5px solid rgba(0,0,0,0.1)', borderRadius:100, padding:'5px 14px', fontSize:12, fontFamily:'Geist, sans-serif', fontWeight:600, cursor:'pointer', whiteSpace:'nowrap', color:'#555', flexShrink:0, marginLeft:4 }}>Trip book</button>
                 )}
               </div>
-            </div>
-          ) : (
-            <div style={{ padding: '24px 4px 16px', borderBottom: `1px solid ${C.mist}`, marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ fontFamily: fonts.display, fontSize: 30, fontStyle: 'italic', color: C.ink }}>{activeTrip?.emoji} {activeTrip?.label}</div>
-              {user && (
-                <label style={{ background: 'rgba(255,255,255,0.7)', border: `1px solid ${C.mist}`, borderRadius: 10, padding: '7px 14px', fontSize: 12, fontFamily: fonts.ui, color: C.dim, cursor: 'pointer' }}>
-                  📷 Add cover
-                  <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleCoverUpload(e, activeSlug)} />
-                </label>
-              )}
-            </div>
-          )}
+            )}
 
-          {/* Day pills bar — colorful, one per day */}
-          {days.length > 0 && (
-            <div className="day-pill-scroll" style={{ display: 'flex', gap: 8, padding: '14px 0 6px', overflowX: 'auto', scrollbarWidth: 'none' }}>
-              {days.map((day, idx) => {
-                const color = dayColor(idx)
-                const isActive = activeDay === day
+            {/* Moments */}
+            {loading ? (
+              <div style={{ textAlign:'center', padding:'60px 0', color:'#bbb', fontFamily:'Geist, sans-serif', fontStyle:'italic' }}>Loading…</div>
+            ) : visibleMoments.length === 0 ? (
+              <div style={{ textAlign:'center', padding:'60px 20px' }}>
+                <div style={{ fontSize:44, marginBottom:12 }}>{activeTrip?.emoji??'✈️'}</div>
+                <div style={{ fontFamily:'Cormorant Garamond, serif', fontStyle:'italic', fontSize:22, marginBottom:6 }}>{activeSlug==='today'?'Nothing yet today':'No moments yet'}</div>
+                <div style={{ fontSize:13, color:'#aaa', fontFamily:'Geist, sans-serif' }}>{user?'Tap the camera to post your first moment':'Sign in to start posting'}</div>
+                {!user && <button onClick={signInWithGoogle} style={{ marginTop:16, background:'#111', color:'#fff', border:'none', borderRadius:12, padding:'11px 28px', fontSize:14, fontFamily:'Geist, sans-serif', fontWeight:600, cursor:'pointer' }}>Sign in with Google</button>}
+              </div>
+            ) : (
+              visibleDays.map((day, idx) => {
+                const color = dayColor(activeDay ? days.indexOf(day) : idx)
                 return (
-                  <button key={day} onClick={() => setActiveDay(activeDay === day ? null : day)}
-                    style={{
-                      background: isActive ? color : `${color}22`,
-                      color: isActive ? '#fff' : color,
-                      border: `2px solid ${color}`,
-                      borderRadius: 100, padding: '5px 14px',
-                      fontSize: 12, fontFamily: fonts.ui, fontWeight: 700,
-                      cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
-                      display: 'flex', alignItems: 'center', gap: 6,
-                      transition: 'all 0.15s',
-                      boxShadow: isActive ? `0 2px 12px ${color}55` : 'none',
-                    }}>
-                    {day}
-                    <span style={{ background: isActive ? 'rgba(255,255,255,0.3)' : `${color}44`, borderRadius: 100, padding: '1px 6px', fontSize: 10, fontWeight: 800 }}>
-                      {grouped[day]?.length}
-                    </span>
-                  </button>
-                )
-              })}
-              {activeSlug !== 'today' && visibleMoments.length > 0 && (
-                <button onClick={() => setShowTripBook(true)}
-                  style={{ background: 'rgba(13,17,23,0.08)', border: '1.5px solid rgba(13,17,23,0.15)', borderRadius: 100, padding: '5px 14px', fontSize: 12, fontFamily: fonts.ui, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', color: C.ink, flexShrink: 0, marginLeft: 4 }}>
-                  Trip book
-                </button>
-              )}
-            </div>
-          )}
-
-          {/* Moments */}
-          {loading ? (
-            <div style={{ textAlign: 'center', padding: '60px 0', color: C.dim, fontFamily: fonts.ui, fontStyle: 'italic' }}>Loading…</div>
-          ) : visibleMoments.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '60px 20px' }}>
-              <div style={{ fontSize: 48, marginBottom: 16 }}>{activeTrip?.emoji ?? '✈️'}</div>
-              <div style={{ fontFamily: fonts.display, fontSize: 26, fontStyle: 'italic', color: C.ink, marginBottom: 8 }}>
-                {activeSlug === 'today' ? 'Nothing yet today' : 'No moments yet'}
-              </div>
-              <div style={{ fontSize: 14, fontFamily: fonts.ui, color: C.dim, lineHeight: 1.6 }}>
-                {user ? 'Tap + to capture your first moment' : 'Sign in to start posting'}
-              </div>
-              {!user && <button onClick={signInWithGoogle} style={{ marginTop: 20, background: C.amber, color: C.night, border: 'none', borderRadius: 12, padding: '12px 28px', fontSize: 14, fontFamily: fonts.ui, fontWeight: 700, cursor: 'pointer' }}>Sign in with Google</button>}
-            </div>
-          ) : (
-            days.map(day => (
-              <div key={day} style={{ marginBottom: 8 }}>
-                {/* Day stamp */}
-                {(() => {
-                  const dayIdx = days.indexOf(day)
-                  const color = dayColor(dayIdx)
-                  return (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '20px 0 12px' }}>
-                      <div style={{ width: 40, height: 40, borderRadius: '50%', background: color, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: fonts.ui, fontWeight: 800, fontSize: 15, flexShrink: 0, boxShadow: `0 2px 10px ${color}55` }}>
-                        {day.split(' ')[1]}
-                      </div>
-                      <div style={{ fontFamily: fonts.display, fontStyle: 'italic', fontSize: 20, fontWeight: 700, color: C.ink, letterSpacing: '-0.01em' }}>{day}</div>
-                      <div style={{ flex: 1, height: 1, background: 'rgba(0,0,0,0.08)' }} />
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <button onClick={() => setRecapDay(day)}
-                          style={{ background: `${color}18`, color: color, border: `1.5px solid ${color}44`, borderRadius: 100, padding: '3px 12px', fontSize: 11, fontFamily: fonts.ui, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                          Recap
-                        </button>
-                      </div>
+                  <div key={day}>
+                    <div style={{ display:'flex', alignItems:'center', gap:10, padding:'18px 0 10px' }}>
+                      <div style={{ width:38, height:38, borderRadius:'50%', background:color, color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontFamily:'Geist, sans-serif', fontWeight:800, fontSize:14, flexShrink:0, boxShadow:`0 2px 8px ${color}55` }}>{day.split(' ')[1]}</div>
+                      <div style={{ fontFamily:'Cormorant Garamond, serif', fontStyle:'italic', fontSize:20, color:'#111', fontWeight:600 }}>{day}</div>
+                      <div style={{ flex:1, height:1, background:'rgba(0,0,0,0.06)' }} />
+                      <button onClick={()=>setRecapDay(day)} style={{ background:`${color}18`, color, border:`1.5px solid ${color}44`, borderRadius:100, padding:'3px 12px', fontSize:11, fontFamily:'Geist, sans-serif', fontWeight:700, cursor:'pointer' }}>Recap</button>
                     </div>
-                  )
-                })()}
-                {grouped[day].map(m => (
-                  <MomentCard key={m.id} moment={m} user={user} onReact={handleReact} onMenuOpen={setMenuMoment} />
-                ))}
-              </div>
-            ))
-          )}
-        </div>
-      )}
+                    {grouped[day].map(m => <MomentCard key={m.id} moment={m} user={user} onReact={handleReact} onMenuOpen={setMenuMoment} />)}
+                  </div>
+                )
+              })
+            )}
+          </div>
+        )}
 
-      {/* ── FAB — camera + gallery ── */}
-      {user && activeSlug !== 'upcoming' && (
-        <div style={{ position: 'fixed', bottom: 32, right: 24, zIndex: 200, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-          <label title="Gallery" style={{ width: 42, height: 42, borderRadius: '50%', background: C.night, border: `1.5px solid rgba(232,168,56,0.4)`, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 2px 16px rgba(0,0,0,0.25)' }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.amber} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5" fill={C.amber} stroke="none"/><polyline points="21 15 16 10 5 21"/>
-            </svg>
-            <input type="file" multiple accept="image/*,video/*" style={{ display: 'none' }}
-              onChange={e => { const picked = Array.from(e.target.files); if (!picked.length) return; setGalleryFiles(picked); setShowAddMoment(true) }} />
-          </label>
-          <label title="Camera" style={{ width: 62, height: 62, borderRadius: '50%', background: C.night, border: `2px solid ${C.amber}`, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: `0 4px 28px rgba(0,0,0,0.4), 0 0 0 5px ${C.parchment}` }}>
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke={C.amber} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>
-            </svg>
-            <input type="file" accept="image/*,video/*" capture="environment" style={{ display: 'none' }}
-              onChange={e => { const picked = Array.from(e.target.files); if (!picked.length) return; setGalleryFiles(picked); setShowAddMoment(true) }} />
-          </label>
-        </div>
-      )}
+        {/* ── FABs ── */}
+        {user && activeSlug !== 'upcoming' && (
+          <div style={{ position:'fixed', bottom:32, right:22, zIndex:200, display:'flex', flexDirection:'column', alignItems:'center', gap:10 }}>
+            <label style={{ width:42, height:42, borderRadius:'50%', background:'rgba(13,13,13,0.85)', border:'1.5px solid rgba(245,200,66,0.35)', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', boxShadow:'0 2px 14px rgba(0,0,0,0.2)', backdropFilter:'blur(8px)' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#F5C842" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5" fill="#F5C842" stroke="none"/><polyline points="21 15 16 10 5 21"/></svg>
+              <input type="file" multiple accept="image/*,video/*" style={{ display:'none' }} onChange={e=>{const p=Array.from(e.target.files);if(!p.length)return;setGalleryFiles(p);setShowAddMoment(true)}} />
+            </label>
+            <label style={{ width:58, height:58, borderRadius:'50%', background:'rgba(13,13,13,0.9)', border:'2px solid #F5C842', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', boxShadow:`0 4px 24px rgba(0,0,0,0.3), 0 0 0 4px rgba(245,248,240,0.8)`, backdropFilter:'blur(8px)' }}>
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#F5C842" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+              <input type="file" accept="image/*,video/*" capture="environment" style={{ display:'none' }} onChange={e=>{const p=Array.from(e.target.files);if(!p.length)return;setGalleryFiles(p);setShowAddMoment(true)}} />
+            </label>
+          </div>
+        )}
 
-      {/* ── Modals ── */}
-      {showAddMoment && <AddMomentModal onClose={() => { setShowAddMoment(false); setGalleryFiles([]) }} onAdd={handleAddMoment} loading={posting} initialFiles={galleryFiles} key={galleryFiles.length + '-' + showAddMoment} />}
-      {showAddTrip && <AddTripModal onClose={() => setShowAddTrip(false)} onAdd={handleAddTrip} />}
-      {showMembers && <MembersPanel trips={trips} user={user} onClose={() => setShowMembers(false)} />}
-      {menuMoment && <MomentMenu moment={menuMoment} user={user} onDelete={m => { setMenuMoment(null); setDeleteMoment(m) }} onClose={() => setMenuMoment(null)} />}
-      {deleteMoment && <DeleteConfirmModal onClose={() => setDeleteMoment(null)} onConfirm={handleDelete} loading={deleting} />}
-      {recapDay && (
-        <DayRecap
-          day={recapDay}
-          moments={grouped[recapDay] ?? []}
-          tripName={activeTrip?.label ?? 'Trip'}
-          tripEmoji={activeTrip?.emoji ?? '✈️'}
-          onClose={() => setRecapDay(null)}
-        />
-      )}
-      {showTripBook && (
-        <TripBook
-          moments={visibleMoments}
-          tripName={activeTrip?.label ?? 'Trip'}
-          tripEmoji={activeTrip?.emoji ?? '✈️'}
-          onClose={() => setShowTripBook(false)}
-        />
-      )}
-      {joinState && <JoinBanner joinState={joinState} onClose={() => window.location.reload()} />}
+        {/* ── Modals ── */}
+        {showAddMoment && <AddMomentModal onClose={()=>{setShowAddMoment(false);setGalleryFiles([])}} onAdd={handleAddMoment} loading={posting} initialFiles={galleryFiles} key={galleryFiles.length+'-'+showAddMoment} />}
+        {showAddTrip && <AddTripModal onClose={()=>setShowAddTrip(false)} onAdd={handleAddTrip} />}
+        {showMembers && <MembersPanel trips={trips} user={user} onClose={()=>setShowMembers(false)} />}
+        {menuMoment && <MomentMenu moment={menuMoment} user={user} onDelete={m=>{setMenuMoment(null);setDeleteMoment(m)}} onClose={()=>setMenuMoment(null)} />}
+        {deleteMoment && <DeleteConfirmModal onClose={()=>setDeleteMoment(null)} onConfirm={handleDelete} loading={deleting} />}
+        {recapDay && <DayRecap day={recapDay} moments={grouped[recapDay]??[]} tripName={activeTrip?.label??'Trip'} tripEmoji={activeTrip?.emoji??'✈️'} onClose={()=>setRecapDay(null)} />}
+        {showTripBook && <TripBook moments={visibleMoments} tripName={activeTrip?.label??'Trip'} tripEmoji={activeTrip?.emoji??'✈️'} onClose={()=>setShowTripBook(false)} />}
+        {joinState && <JoinBanner joinState={joinState} onClose={()=>window.location.reload()} />}
 
-      {/* ── Toast ── */}
-      {toast && (
-        <div style={{ position: 'fixed', top: 68, left: '50%', transform: 'translateX(-50%)', background: C.night, color: '#fff', padding: '10px 20px', borderRadius: 100, fontSize: 13, fontFamily: fonts.ui, fontWeight: 500, zIndex: 500, whiteSpace: 'nowrap', boxShadow: '0 4px 20px rgba(0,0,0,0.2)', border: `1px solid rgba(255,255,255,0.08)` }}>
-          {toast}
-        </div>
-      )}
+        {/* ── Toast ── */}
+        {toast && <div style={{ position:'fixed', top:66, left:'50%', transform:'translateX(-50%)', background:'rgba(13,13,13,0.9)', color:'#fff', padding:'10px 20px', borderRadius:100, fontSize:13, fontFamily:'Geist, sans-serif', fontWeight:500, zIndex:500, whiteSpace:'nowrap', boxShadow:'0 4px 20px rgba(0,0,0,0.2)', backdropFilter:'blur(8px)' }}>{toast}</div>}
+
+      </div>
     </div>
   )
 }
