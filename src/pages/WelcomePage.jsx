@@ -1,6 +1,78 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 const DAY_COLORS = ['#FF6B6B','#FF9F43','#FECA57','#1DD1A1','#48DBFB','#FF9FF3','#54A0FF']
+
+const ALL_MOMENTS = [
+  { name:'Umer', color:'#FF6B6B', emoji:'🕌', caption:'First look at the Bosphorus. Worth every penny. 🌊' },
+  { name:'Sarah', color:'#54A0FF', emoji:'🎈', caption:'balloooon!! so many colours!! i want to go again 🎈🎈🎈' },
+  { name:'Adil', color:'#1DD1A1', emoji:'🍜', caption:'Found the best kebab spot. Dad owes me 20 lira 😤' },
+  { name:'Mom', color:'#FF9FF3', emoji:'🛍️', caption:'The Grand Bazaar has everything. EVERYTHING. 👀' },
+  { name:'Dad', color:'#EE5A24', emoji:'🤌', caption:'This tea is better than anything back home. Period.' },
+  { name:'Iesa', color:'#FECA57', emoji:'⚽', caption:'played football with turkish kids. scored twice. i am better than mbappe 🏆⚽' },
+  { name:'Anas', color:'#5F27CD', emoji:'😤', caption:'iesa took my toy and i said NOOO and papa said calm down 😤' },
+  { name:'Shifa', color:'#48DBFB', emoji:'🌊', caption:'Bosphorus cruise was 10/10. Highly recommend the sunset 🌅' },
+  { name:'Saba', color:'#FF9F43', emoji:'🧿', caption:'Bought 47 evil eyes. They are all for me. No returns.' },
+]
+
+function AnimatedMoments() {
+  const [index, setIndex] = useState(0)
+  const [visible, setVisible] = useState(true)
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setVisible(false)
+      setTimeout(() => {
+        setIndex(i => (i + 1) % ALL_MOMENTS.length)
+        setVisible(true)
+      }, 300)
+    }, 2800)
+    return () => clearInterval(interval)
+  }, [])
+
+  const m = ALL_MOMENTS[index]
+  const prev = ALL_MOMENTS[(index - 1 + ALL_MOMENTS.length) % ALL_MOMENTS.length]
+
+  return (
+    <div style={{ margin:'36px 0', width:'100%', maxWidth:320, display:'flex', flexDirection:'column', gap:10 }}>
+      <style>{`
+        @keyframes momentIn { from{opacity:0;transform:translateY(8px) scale(0.97)} to{opacity:1;transform:translateY(0) scale(1)} }
+        @keyframes momentOut { from{opacity:1;transform:translateY(0)} to{opacity:0;transform:translateY(-8px)} }
+        .moment-visible { animation: momentIn 0.3s ease both; }
+        .moment-hidden { animation: momentOut 0.3s ease both; }
+      `}</style>
+
+      {/* Previous card — static, slightly faded */}
+      <div style={{ background:'rgba(255,255,255,0.6)', borderRadius:16, padding:'11px 14px', boxShadow:'0 1px 8px rgba(0,0,0,0.04)', textAlign:'left', backdropFilter:'blur(8px)', opacity:0.5, transform:'scale(0.97)' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:5 }}>
+          <div style={{ width:28, height:28, borderRadius:'50%', background:prev.color, display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, flexShrink:0 }}>{prev.emoji}</div>
+          <div style={{ fontSize:12, fontWeight:700, fontFamily:'Geist, sans-serif', color:'#111' }}>{prev.name}</div>
+        </div>
+        <div style={{ fontSize:12, fontFamily:'Geist, sans-serif', color:'#555' }}>{prev.caption}</div>
+      </div>
+
+      {/* Active card — animated */}
+      <div className={visible ? 'moment-visible' : 'moment-hidden'}
+        style={{ background:'rgba(255,255,255,0.92)', borderRadius:16, padding:'12px 14px', boxShadow:'0 4px 20px rgba(0,0,0,0.1)', textAlign:'left', backdropFilter:'blur(8px)', border:`1px solid ${m.color}33` }}>
+        <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6 }}>
+          <div style={{ width:30, height:30, borderRadius:'50%', background:m.color, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, flexShrink:0 }}>{m.emoji}</div>
+          <div>
+            <div style={{ fontSize:13, fontWeight:700, fontFamily:'Geist, sans-serif', color:'#111' }}>{m.name}</div>
+            <div style={{ fontSize:10, color:'#aaa', fontFamily:'Geist, sans-serif' }}>just now</div>
+          </div>
+          <div style={{ marginLeft:'auto', fontSize:10, background:`${m.color}22`, color:m.color, borderRadius:100, padding:'2px 8px', fontFamily:'Geist, sans-serif', fontWeight:700 }}>❤️ {Math.floor(Math.random()*8)+1}</div>
+        </div>
+        <div style={{ fontSize:13, fontFamily:'Geist, sans-serif', color:'#222', lineHeight:1.5 }}>{m.caption}</div>
+      </div>
+
+      {/* Dots indicator */}
+      <div style={{ display:'flex', justifyContent:'center', gap:5, marginTop:4 }}>
+        {ALL_MOMENTS.map((_, i) => (
+          <div key={i} style={{ width: i===index ? 16 : 5, height:5, borderRadius:100, background: i===index ? m.color : '#ddd', transition:'all 0.3s ease' }} />
+        ))}
+      </div>
+    </div>
+  )
+}
 
 export function WelcomePage({ onSignIn, loading }) {
   const [pressed, setPressed] = useState(false)
@@ -74,24 +146,8 @@ export function WelcomePage({ onSignIn, loading }) {
           </div>
         </div>
 
-        {/* Sample moments preview */}
-        <div style={{ animation:'fadeUp 0.6s ease both', animationDelay:'0.3s', margin:'48px 0', display:'flex', flexDirection:'column', gap:10, width:'100%', maxWidth:320 }}>
-          {[
-            { name:'Umer', time:'2:36 PM · Istanbul, Turkey', caption:'First look at the Bosphorus 🌊', color:'#FF6B6B', img:'🕌' },
-            { name:'Sarah', time:'4:12 PM · Cappadocia', caption:'Hot air balloon ride was unreal!!!', color:'#54A0FF', img:'🎈' },
-          ].map((m, i) => (
-            <div key={i} style={{ background:'rgba(255,255,255,0.85)', borderRadius:16, padding:'12px 14px', boxShadow:'0 2px 12px rgba(0,0,0,0.06)', textAlign:'left', backdropFilter:'blur(8px)' }}>
-              <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6 }}>
-                <div style={{ width:30, height:30, borderRadius:'50%', background:m.color, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, flexShrink:0 }}>{m.img}</div>
-                <div>
-                  <div style={{ fontSize:12, fontWeight:700, fontFamily:'Geist, sans-serif', color:'#111' }}>{m.name}</div>
-                  <div style={{ fontSize:10, color:'#aaa', fontFamily:'Geist, sans-serif' }}>{m.time}</div>
-                </div>
-              </div>
-              <div style={{ fontSize:13, fontFamily:'Geist, sans-serif', color:'#333' }}>{m.caption}</div>
-            </div>
-          ))}
-        </div>
+        {/* Rotating family moments */}
+        <AnimatedMoments />
 
         {/* CTA */}
         <div style={{ animation:'fadeUp 0.6s ease both', animationDelay:'0.5s', width:'100%', maxWidth:320 }}>
