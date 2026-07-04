@@ -484,8 +484,15 @@ function PrivacyToggle({ tripId, isPrivate, onToggle }) {
   }
   return (
     <button onClick={toggle} disabled={loading}
-      style={{ background: isPrivate ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.15)', border: `1px solid ${isPrivate ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.25)'}`, borderRadius:8, padding:'6px 12px', fontSize:11, fontFamily:'Geist, sans-serif', color:'#fff', cursor:'pointer', backdropFilter:'blur(8px)', display:'flex', alignItems:'center', gap:5, whiteSpace:'nowrap' }}>
-      {isPrivate ? '🔒 Private' : '🌍 Public'}
+      style={{ background:'none', border:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:8, opacity:loading?0.5:1, padding:0 }}>
+      <span style={{ fontSize:11, fontFamily:'Geist, sans-serif', fontWeight:600, color:'rgba(255,255,255,0.7)', letterSpacing:'0.04em' }}>
+        {isPrivate ? 'Private' : 'Public'}
+      </span>
+      {/* Toggle track */}
+      <div style={{ width:36, height:20, borderRadius:100, background:isPrivate?'rgba(255,255,255,0.25)':'rgba(255,255,255,0.5)', position:'relative', transition:'background 0.2s', border:'1px solid rgba(255,255,255,0.3)' }}>
+        {/* Toggle thumb */}
+        <div style={{ position:'absolute', top:2, left:isPrivate?16:2, width:14, height:14, borderRadius:'50%', background:'#fff', transition:'left 0.2s', boxShadow:'0 1px 4px rgba(0,0,0,0.2)' }} />
+      </div>
     </button>
   )
 }
