@@ -36,6 +36,7 @@ export function useMoments(tripId) {
 
     if (momentErr) throw new Error(momentErr.message)
 
+    // Optimistic insert — show moment immediately while images upload
     const optimistic = { ...moment, moment_images: [], reactions: [] }
     setMoments(ms => [optimistic, ...ms])
 
@@ -58,15 +59,21 @@ export function useMoments(tripId) {
       )
     }
 
+    // Final sync to get real image URLs into state
     fetchMoments()
+
+    // Trigger push notifications to family members
+    supabase.functions.invoke('send-push-notification', {
+      body: { tripId, posterName: userName, tripName: '', momentId: moment.id }
+    }).catch(() => {})
+
     return moment
   }
 
   async function toggleReaction(momentId, userId, emoji) {
-    const existing = moments
-      .find(m => m.id === momentId)
-      ?.reactions?.find(r => r.user_id === userId && r.emoji === emoji)
+    const existing = moments.find(m => m.id === momentId)?.reactions?.find(r => r.user_id === userId && r.emoji === emoji)
 
+    // Optimistic update — update local state immediately
     setMoments(ms => ms.map(m => {
       if (m.id !== momentId) return m
       const reactions = m.reactions ?? []
@@ -77,6 +84,7 @@ export function useMoments(tripId) {
       }
     }))
 
+    // Sync with DB in background
     if (existing) await supabase.from('reactions').delete().eq('id', existing.id)
     else await supabase.from('reactions').insert({ moment_id: momentId, user_id: userId, emoji })
   }
