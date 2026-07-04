@@ -542,6 +542,7 @@ export function TimelinePage() {
   const [posting, setPosting] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [galleryFiles, setGalleryFiles] = useState([])
+  const [slideDir, setSlideDir] = useState('none') // 'left' | 'right' | 'none'
   const [toast, setToast] = useState('')
 
   const showToast = msg => { setToast(msg); setTimeout(() => setToast(''), 3000) }
@@ -556,6 +557,7 @@ export function TimelinePage() {
     }
   }, [user])
   useEffect(() => { setActiveDay(null) }, [activeSlug])
+  useEffect(() => { setSlideDir('none') }, [activeSlug])
 
   const activeTrip = trips.find(t => t.slug === activeSlug)
   const { moments, loading, addMoment, toggleReaction, refetch, setMoments } = useMoments(activeTrip?.id ?? null)
@@ -583,10 +585,12 @@ export function TimelinePage() {
     if (!user) return
     setPosting(true)
     try {
-      const result = await queueOrPost({ ...payload, userId:user.id, userName:user.user_metadata?.full_name??user.email, userAvatar:user.user_metadata?.avatar_url??null })
+      // Close modal immediately for snappy feel
       setShowAddMoment(false)
       setGalleryFiles([])
-      showToast(result ? 'Moment posted ✨' : 'Saved offline — will sync when connected 📶')
+      showToast('Posting… ✨')
+      const result = await queueOrPost({ ...payload, userId:user.id, userName:user.user_metadata?.full_name??user.email, userAvatar:user.user_metadata?.avatar_url??null })
+      if (!result) showToast('Saved offline — will sync when connected 📶')
     }
     catch(e) { showToast('Error: '+e.message) }
     finally { setPosting(false) }
@@ -726,9 +730,18 @@ export function TimelinePage() {
 
         {/* ── Feed ── */}
         {activeSlug !== 'upcoming' && (
-          <div className="fade-up" style={{ maxWidth:560, margin:'0 auto', padding:'0 14px 100px' }}
-            onTouchStart={e=>{window._swX=e.touches[0].clientX}}
-            onTouchEnd={e=>{const d=window._swX-e.changedTouches[0].clientX;const slugs=[...trips.map(t=>t.slug),'upcoming'];const idx=slugs.indexOf(activeSlug);if(d>60&&idx<slugs.length-1)setActiveSlug(slugs[idx+1]);if(d<-60&&idx>0)setActiveSlug(slugs[idx-1])}}>
+          <div style={{ maxWidth:560, margin:'0 auto', padding:'0 14px 100px',
+              animation: slideDir==='left' ? 'slideOutLeft 0.18s ease forwards' : slideDir==='right' ? 'slideOutRight 0.18s ease forwards' : 'slideInUp 0.22s ease both' }}
+            onTouchStart={e=>{window._swX=e.touches[0].clientX; window._swY=e.touches[0].clientY}}
+            onTouchEnd={e=>{
+              const dx=window._swX-e.changedTouches[0].clientX
+              const dy=Math.abs(window._swY-e.changedTouches[0].clientY)
+              if(Math.abs(dx)<60||dy>40) return // ignore vertical scrolls
+              const slugs=[...trips.map(t=>t.slug),'upcoming']
+              const idx=slugs.indexOf(activeSlug)
+              if(dx>60&&idx<slugs.length-1){ setSlideDir('left'); setTimeout(()=>{setActiveSlug(slugs[idx+1]);setSlideDir('none')},180) }
+              if(dx<-60&&idx>0){ setSlideDir('right'); setTimeout(()=>{setActiveSlug(slugs[idx-1]);setSlideDir('none')},180) }
+            }}>
 
             {/* Trip hero */}
             {activeSlug === 'today' ? (
