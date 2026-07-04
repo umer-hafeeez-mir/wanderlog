@@ -217,28 +217,24 @@ export function TripBook({ moments, tripName, tripEmoji, onClose }) {
     <div onClick={e => e.target === e.currentTarget && onClose()}
       style={{ position: 'fixed', inset: 0, background: 'rgba(13,17,23,0.85)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
       <div style={{ background: '#fff', borderRadius: 24, padding: '36px 32px', maxWidth: 400, width: '100%', textAlign: 'center' }}>
-        {/* Preview cover */}
-        <div style={{ background: C.night, borderRadius: 16, padding: '28px 24px', marginBottom: 24, position: 'relative', overflow: 'hidden' }}>
-          <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, background: C.amber }} />
-          <div style={{ fontSize: 10, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, letterSpacing: '0.12em', color: C.amber, textTransform: 'uppercase', marginBottom: 8 }}>Trip Book</div>
-          <div style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontStyle: 'italic', fontSize: 26, color: '#fff', lineHeight: 1.2, marginBottom: 4 }}>{tripEmoji} {tripName}</div>
-          <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 12, color: 'rgba(255,255,255,0.4)', marginBottom: 20 }}>A travel journal</div>
-          <div style={{ display: 'flex', gap: 16, justifyContent: 'center' }}>
-            {[
-              { n: moments.length, l: 'moments' },
-              { n: totalPhotos, l: 'photos' },
-              { n: totalDays, l: 'days' },
-            ].map(s => (
-              <div key={s.l} style={{ textAlign: 'center' }}>
-                <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 24, fontWeight: 700, color: C.amber }}>{s.n}</div>
-                <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>{s.l}</div>
-              </div>
-            ))}
-          </div>
+        <div style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontStyle: 'italic', fontSize: 28, color: C.ink, marginBottom: 6 }}>{tripEmoji} {tripName}</div>
+        <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 12, color: C.dim, marginBottom: 24, letterSpacing: '0.06em', textTransform: 'uppercase' }}>Trip Book</div>
+
+        <div style={{ display: 'flex', gap: 24, justifyContent: 'center', marginBottom: 24 }}>
+          {[
+            { n: moments.length, l: 'moments' },
+            { n: totalPhotos, l: 'photos' },
+            { n: totalDays, l: 'days' },
+          ].map(s => (
+            <div key={s.l} style={{ textAlign: 'center' }}>
+              <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 32, fontWeight: 700, color: C.ink, lineHeight: 1 }}>{s.n}</div>
+              <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 11, color: C.dim, marginTop: 3 }}>{s.l}</div>
+            </div>
+          ))}
         </div>
 
         <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 13, color: C.dim, lineHeight: 1.6, marginBottom: 24 }}>
-          Generates a beautifully designed PDF with all your moments, photos, and locations — ready to print or keep as a keepsake.
+          A beautifully designed PDF of your trip — moments, photos, and locations, ready to print or keep.
         </div>
 
         {progress && (
@@ -247,12 +243,12 @@ export function TripBook({ moments, tripName, tripEmoji, onClose }) {
 
         <div style={{ display: 'flex', gap: 10 }}>
           <button onClick={onClose}
-            style={{ flex: 1, background: '#f7f3ee', color: C.dim, border: 'none', borderRadius: 12, padding: '12px', fontSize: 14, fontFamily: "'DM Sans', sans-serif", fontWeight: 500, cursor: 'pointer' }}>
+            style={{ flex: 1, background: C.night, color: 'rgba(255,255,255,0.5)', border: '1.5px solid rgba(255,255,255,0.1)', borderRadius: 12, padding: '12px', fontSize: 14, fontFamily: "'DM Sans', sans-serif", fontWeight: 500, cursor: 'pointer' }}>
             Cancel
           </button>
           <button onClick={generate} disabled={generating || moments.length === 0}
-            style={{ flex: 2, background: generating ? C.dim : C.night, color: '#fff', border: 'none', borderRadius: 12, padding: '12px', fontSize: 14, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, cursor: generating ? 'not-allowed' : 'pointer', transition: 'background 0.2s' }}>
-            {generating ? 'Generating…' : `Generate PDF`}
+            style={{ flex: 2, background: C.night, color: generating ? 'rgba(232,168,56,0.4)' : C.amber, border: '1.5px solid rgba(232,168,56,0.3)', borderRadius: 12, padding: '12px', fontSize: 14, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, cursor: generating ? 'not-allowed' : 'pointer' }}>
+            {generating ? 'Generating…' : 'Generate PDF'}
           </button>
         </div>
       </div>
