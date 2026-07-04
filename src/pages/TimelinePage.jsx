@@ -375,13 +375,14 @@ function MomentMenu({ moment, user, onDelete, onClose }) {
           {items.map(item => (
             <button key={item.label} onClick={item.action}
               style={{
-                background: item.danger ? '#e53e3e' : 'rgba(255,255,255,0.96)',
-                color: item.danger ? '#fff' : C.ink,
-                border: 'none', borderRadius: 100,
+                background: item.danger ? 'rgba(229,62,62,0.15)' : C.night,
+                color: item.danger ? '#ff6b6b' : C.amber,
+                border: `1.5px solid ${item.danger ? 'rgba(229,62,62,0.3)' : 'rgba(232,168,56,0.3)'}`,
+                borderRadius: 100,
                 padding: '10px 20px',
                 fontSize: 13, fontFamily: fonts.ui, fontWeight: 600,
                 cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 7,
-                boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.2)',
                 backdropFilter: 'blur(12px)',
                 letterSpacing: '-0.01em',
                 whiteSpace: 'nowrap',
@@ -393,7 +394,7 @@ function MomentMenu({ moment, user, onDelete, onClose }) {
         </div>
         {/* Cancel */}
         <button onClick={onClose}
-          style={{ background: 'rgba(255,255,255,0.85)', color: C.dim, border: 'none', borderRadius: 100, padding: '11px', fontSize: 13, fontFamily: fonts.ui, fontWeight: 500, cursor: 'pointer', backdropFilter: 'blur(12px)', boxShadow: '0 2px 12px rgba(0,0,0,0.1)' }}>
+          style={{ background: 'rgba(13,17,23,0.8)', color: 'rgba(255,255,255,0.35)', border: '1.5px solid rgba(255,255,255,0.08)', borderRadius: 100, padding: '11px', fontSize: 13, fontFamily: fonts.ui, fontWeight: 500, cursor: 'pointer', backdropFilter: 'blur(12px)', boxShadow: '0 2px 12px rgba(0,0,0,0.2)' }}>
           Cancel
         </button>
       </div>
@@ -692,7 +693,7 @@ function MembersPanel({ trips, user, onClose }) {
               <div style={{ fontSize: 13, fontFamily: fonts.ui, fontWeight: 600, color: C.ink, marginBottom: 3 }}>Invite link</div>
               <div style={{ fontSize: 12, fontFamily: fonts.ui, color: C.dim, marginBottom: 12 }}>Anyone with this link can request to join. You approve or reject.</div>
               <button onClick={() => copyInviteLink(selectedTrip)}
-                style={{ background: C.night, color: '#fff', border: 'none', borderRadius: 10, padding: '9px 18px', fontSize: 13, fontFamily: fonts.ui, fontWeight: 600, cursor: 'pointer' }}>
+                style={{ background: C.night, color: C.amber, border: `1.5px solid rgba(232,168,56,0.3)`, borderRadius: 10, padding: '9px 18px', fontSize: 13, fontFamily: fonts.ui, fontWeight: 600, cursor: 'pointer' }}>
                 Copy invite link 🔗
               </button>
               {copyMsg && <div style={{ marginTop: 10, fontSize: 12, fontFamily: fonts.ui, color: C.sage, fontWeight: 500, wordBreak: 'break-all' }}>{copyMsg}</div>}
@@ -709,11 +710,11 @@ function MembersPanel({ trips, user, onClose }) {
                       <div style={{ fontSize: 11, fontFamily: fonts.ui, color: C.dim }}>{m.user_email}</div>
                     </div>
                     <button onClick={() => updateStatus(m.id, 'approved')} disabled={loading}
-                      style={{ background: C.sage, color: '#fff', border: 'none', borderRadius: 8, padding: '7px 14px', fontSize: 12, fontFamily: fonts.ui, fontWeight: 600, cursor: 'pointer', marginRight: 6 }}>
+                      style={{ background: 'rgba(122,158,126,0.15)', color: C.sage, border: `1.5px solid rgba(122,158,126,0.3)`, borderRadius: 8, padding: '7px 14px', fontSize: 12, fontFamily: fonts.ui, fontWeight: 600, cursor: 'pointer', marginRight: 6 }}>
                       Approve
                     </button>
                     <button onClick={() => updateStatus(m.id, 'rejected')} disabled={loading}
-                      style={{ background: 'rgba(229,62,62,0.1)', color: '#e53e3e', border: 'none', borderRadius: 8, padding: '7px 14px', fontSize: 12, fontFamily: fonts.ui, fontWeight: 600, cursor: 'pointer' }}>
+                      style={{ background: 'rgba(229,62,62,0.1)', color: '#ff6b6b', border: '1.5px solid rgba(229,62,62,0.2)', borderRadius: 8, padding: '7px 14px', fontSize: 12, fontFamily: fonts.ui, fontWeight: 600, cursor: 'pointer' }}>
                       Reject
                     </button>
                   </div>
@@ -788,6 +789,7 @@ export function TimelinePage() {
   const [toast, setToast] = useState('')
 
   const showToast = msg => { setToast(msg); setTimeout(() => setToast(''), 3000) }
+  const [showAccountMenu, setShowAccountMenu] = useState(false)
   const joinState = useJoinRequest(trips, user, showToast)
 
   useEffect(() => { loadTripCovers(trips, setTrips) }, [])
@@ -876,43 +878,80 @@ export function TimelinePage() {
     <div style={{ fontFamily: fonts.ui, background: C.parchment, minHeight: '100vh', color: C.ink }}>
 
       {/* ── Header ── */}
-      <header style={{ position: 'sticky', top: 0, zIndex: 100, background: C.night, padding: '0 20px', height: 56, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ fontFamily: fonts.display, fontStyle: 'italic', fontSize: 22, color: C.amber, letterSpacing: '-0.01em' }}>wanderlog</div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+      <header style={{ position: 'sticky', top: 0, zIndex: 100, background: C.night }}>
+
+        {/* Top bar */}
+        <div style={{ padding: '0 20px', height: 56, display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          {/* Logo */}
+          <div style={{ fontFamily: fonts.display, fontStyle: 'italic', fontSize: 24, color: C.amber, letterSpacing: '-0.01em', userSelect: 'none' }}>
+            wanderlog
+          </div>
+
+          {/* Right — account */}
           {user ? (
-            <>
-              {user.email === ADMIN_EMAIL && (
-                <button onClick={() => setShowMembers(true)}
-                  style={{ background: 'rgba(255,255,255,0.08)', border: 'none', color: 'rgba(255,255,255,0.7)', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontFamily: fonts.ui, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
-                  👥 Members
-                </button>
+            <div style={{ position: 'relative' }}>
+              <button onClick={() => setShowAccountMenu(m => !m)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
+                <Avatar src={user.user_metadata?.avatar_url} name={user.email} size={32} />
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                  <path d={showAccountMenu ? 'M2 8 L6 4 L10 8' : 'M2 4 L6 8 L10 4'} stroke="rgba(255,255,255,0.4)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
+
+              {/* Dropdown */}
+              {showAccountMenu && (
+                <>
+                  <div onClick={() => setShowAccountMenu(false)} style={{ position: 'fixed', inset: 0, zIndex: 98 }} />
+                  <div style={{ position: 'absolute', top: 44, right: 0, background: C.night, border: '1px solid rgba(255,255,255,0.1)', borderRadius: 16, minWidth: 200, boxShadow: '0 8px 32px rgba(0,0,0,0.4)', zIndex: 99, overflow: 'hidden' }}>
+                    {/* User info */}
+                    <div style={{ padding: '14px 16px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+                      <div style={{ fontSize: 13, fontFamily: fonts.ui, fontWeight: 600, color: '#fff' }}>{user.user_metadata?.full_name ?? 'Traveller'}</div>
+                      <div style={{ fontSize: 11, fontFamily: fonts.ui, color: 'rgba(255,255,255,0.35)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.email}</div>
+                    </div>
+                    {/* Menu items */}
+                    {[
+                      ...(user.email === ADMIN_EMAIL ? [{ icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>, label: 'Members', action: () => { setShowMembers(true); setShowAccountMenu(false) } }] : []),
+                      { icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>, label: 'Sign out', action: () => { signOut(); setShowAccountMenu(false) }, danger: true },
+                    ].map(item => (
+                      <button key={item.label} onClick={item.action}
+                        style={{ width: '100%', background: 'none', border: 'none', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', color: item.danger ? '#ff6b6b' : 'rgba(255,255,255,0.75)', fontFamily: fonts.ui, fontSize: 13, textAlign: 'left', transition: 'background 0.1s' }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                        {item.icon}
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                </>
               )}
-              <div onClick={() => {}} style={{ cursor: 'pointer' }}>
-                <Avatar src={user.user_metadata?.avatar_url} name={user.email} size={30} />
-              </div>
-              <button onClick={signOut} style={{ background: 'none', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.5)', borderRadius: 8, padding: '5px 12px', fontSize: 12, fontFamily: fonts.ui, cursor: 'pointer' }}>Out</button>
-            </>
+            </div>
           ) : (
-            <button onClick={signInWithGoogle} style={{ background: C.amber, color: C.night, border: 'none', borderRadius: 8, padding: '7px 16px', fontSize: 13, fontFamily: fonts.ui, fontWeight: 700, cursor: 'pointer', letterSpacing: '-0.01em' }}>Sign in</button>
+            <button onClick={signInWithGoogle}
+              style={{ background: C.amber, color: C.night, border: 'none', borderRadius: 10, padding: '8px 18px', fontSize: 13, fontFamily: fonts.ui, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+              Sign in
+            </button>
+          )}
+        </div>
+
+        {/* Tab bar */}
+        <div style={{ display: 'flex', overflowX: 'auto', scrollbarWidth: 'none', alignItems: 'center' }}>
+          {allTabs.map(tab => (
+            <button key={tab.slug} onClick={() => setActiveSlug(tab.slug)}
+              style={{ background: 'none', border: 'none', borderBottom: activeSlug === tab.slug ? `2px solid ${C.amber}` : '2px solid transparent', color: activeSlug === tab.slug ? '#fff' : 'rgba(255,255,255,0.35)', padding: '11px 18px', fontSize: 13, fontFamily: fonts.ui, fontWeight: activeSlug === tab.slug ? 600 : 400, cursor: 'pointer', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, letterSpacing: '-0.01em', transition: 'all 0.15s' }}>
+              {tab.emoji} {tab.label}
+            </button>
+          ))}
+          {user && (
+            <button onClick={() => setShowAddTrip(true)}
+              style={{ background: 'none', border: 'none', borderBottom: '2px solid transparent', color: 'rgba(255,255,255,0.3)', padding: '11px 14px', fontSize: 20, cursor: 'pointer', flexShrink: 0, transition: 'color 0.15s' }}
+              onMouseEnter={e => e.currentTarget.style.color = C.amber}
+              onMouseLeave={e => e.currentTarget.style.color = 'rgba(255,255,255,0.3)'}>
+              ＋
+            </button>
           )}
         </div>
       </header>
-
-      {/* ── Tab bar ── */}
-      <div style={{ background: C.night, borderBottom: `1px solid rgba(255,255,255,0.06)`, display: 'flex', overflowX: 'auto', scrollbarWidth: 'none', alignItems: 'center' }}>
-        {allTabs.map(tab => (
-          <button key={tab.slug} onClick={() => setActiveSlug(tab.slug)}
-            style={{ background: 'none', border: 'none', borderBottom: activeSlug === tab.slug ? `2px solid ${C.amber}` : '2px solid transparent', color: activeSlug === tab.slug ? '#fff' : 'rgba(255,255,255,0.4)', padding: '13px 18px', fontSize: 13, fontFamily: fonts.ui, fontWeight: activeSlug === tab.slug ? 600 : 400, cursor: 'pointer', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, letterSpacing: '-0.01em', transition: 'color 0.15s' }}>
-            {tab.emoji} {tab.label}
-          </button>
-        ))}
-        {user && (
-          <button onClick={() => setShowAddTrip(true)}
-            style={{ background: 'none', border: 'none', color: C.amber, padding: '13px 16px', fontSize: 18, cursor: 'pointer', flexShrink: 0, opacity: 0.8 }}>
-            ＋
-          </button>
-        )}
-      </div>
 
       {/* ── Upcoming ── */}
       {activeSlug === 'upcoming' && (
@@ -927,7 +966,7 @@ export function TimelinePage() {
               <span style={{ marginLeft: 'auto', fontSize: 11, fontFamily: fonts.ui, background: `${C.amber}22`, color: C.rust, borderRadius: 100, padding: '4px 12px', fontWeight: 600 }}>Soon</span>
             </div>
           ))}
-          {user && <button onClick={() => setShowAddTrip(true)} style={{ marginTop: 24, background: C.night, color: '#fff', border: 'none', borderRadius: 14, padding: '13px 32px', fontSize: 14, fontFamily: fonts.ui, fontWeight: 600, cursor: 'pointer' }}>+ Add a trip</button>}
+          {user && <button onClick={() => setShowAddTrip(true)} style={{ marginTop: 24, background: C.night, color: C.amber, border: `1.5px solid rgba(232,168,56,0.3)`, borderRadius: 14, padding: '13px 32px', fontSize: 14, fontFamily: fonts.ui, fontWeight: 600, cursor: 'pointer' }}>+ Add a trip</button>}
         </div>
       )}
 
@@ -986,7 +1025,7 @@ export function TimelinePage() {
                 { label: '📄 Trip book', action: () => setShowTripBook(true) },
               ].map(btn => (
                 <button key={btn.label} onClick={btn.action}
-                  style={{ background: 'rgba(255,255,255,0.7)', border: `1px solid ${C.mist}`, borderRadius: 100, padding: '7px 16px', fontSize: 12, fontFamily: fonts.ui, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', color: C.ink, flexShrink: 0 }}>
+                  style={{ background: C.night, border: `1.5px solid rgba(232,168,56,0.3)`, borderRadius: 100, padding: '7px 16px', fontSize: 12, fontFamily: fonts.ui, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', color: C.amber, flexShrink: 0 }}>
                   {btn.label}
                 </button>
               ))}
@@ -1005,7 +1044,7 @@ export function TimelinePage() {
               <div style={{ fontSize: 14, fontFamily: fonts.ui, color: C.dim, lineHeight: 1.6 }}>
                 {user ? 'Tap + to capture your first moment' : 'Sign in to start posting'}
               </div>
-              {!user && <button onClick={signInWithGoogle} style={{ marginTop: 20, background: C.night, color: '#fff', border: 'none', borderRadius: 12, padding: '12px 28px', fontSize: 14, fontFamily: fonts.ui, fontWeight: 600, cursor: 'pointer' }}>Sign in with Google</button>}
+              {!user && <button onClick={signInWithGoogle} style={{ marginTop: 20, background: C.amber, color: C.night, border: 'none', borderRadius: 12, padding: '12px 28px', fontSize: 14, fontFamily: fonts.ui, fontWeight: 700, cursor: 'pointer' }}>Sign in with Google</button>}
             </div>
           ) : (
             days.map(day => (
@@ -1018,7 +1057,7 @@ export function TimelinePage() {
                   </div>
                   <div style={{ flex: 1, height: 1, background: C.mist }} />
                   <button onClick={() => setRecapDay(day)}
-                    style={{ fontSize: 11, fontFamily: fonts.ui, color: C.rust, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, padding: '2px 0', whiteSpace: 'nowrap' }}>
+                    style={{ fontSize: 11, fontFamily: fonts.ui, color: C.amber, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, padding: '2px 0', whiteSpace: 'nowrap', opacity: 0.8 }}>
                     {grouped[day].length} moment{grouped[day].length !== 1 ? 's' : ''} · Recap ↗
                   </button>
                 </div>
