@@ -23,7 +23,7 @@ const EMOJI_OPTIONS = ['✈️','🌍','🏔️','🏖️','🏙️','🗺️','
 // ── Design tokens ─────────────────────────────────────────────
 const C = {
   night:    '#0d1117',
-  parchment:'#f2ead8',
+  parchment:'#f5f0e8',
   amber:    '#e8a838',
   rust:     '#c4603a',
   sage:     '#7a9e7e',
@@ -32,6 +32,14 @@ const C = {
   ghost:    '#f8f4ec',
   dim:      '#8a8070',
 }
+
+// Day pill colors — vivid, each day gets a different one
+const DAY_COLORS = [
+  '#FF6B6B', '#FF9F43', '#FECA57', '#48DBFB',
+  '#FF9FF3', '#54A0FF', '#5F27CD', '#00D2D3',
+  '#01CBC6', '#C8D6E5', '#8395A7', '#EE5A24',
+]
+function dayColor(idx) { return DAY_COLORS[idx % DAY_COLORS.length] }
 
 const fonts = {
   display: "'Cormorant Garamond', Georgia, serif",
@@ -287,7 +295,7 @@ function MomentCard({ moment, user, onReact, onMenuOpen }) {
   return (
     <div style={{ background: '#fff', borderRadius: 20, boxShadow: '0 2px 20px rgba(28,35,51,0.07), 0 0 0 1px rgba(28,35,51,0.04)', marginBottom: 16, overflow: 'hidden', position: 'relative' }}>
       {/* Card header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 20px 0' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 14px 0' }}>
         <Avatar src={moment.user_avatar} name={displayName} size={34} />
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 13, fontWeight: 600, fontFamily: fonts.ui, color: C.ink, letterSpacing: '-0.01em' }}>{displayName}</div>
@@ -303,7 +311,7 @@ function MomentCard({ moment, user, onReact, onMenuOpen }) {
 
       {/* Caption */}
       {moment.caption && (
-        <p style={{ margin: '10px 20px 12px', fontSize: 15, lineHeight: 1.6, fontFamily: fonts.display, fontStyle: 'italic', color: '#2a2420', fontWeight: 400 }}>
+        <p style={{ margin: '8px 14px 10px', fontSize: 14, lineHeight: 1.55, fontFamily: fonts.ui, color: '#2a2420', fontWeight: 400 }}>
           {moment.caption}
         </p>
       )}
@@ -320,9 +328,9 @@ function MomentCard({ moment, user, onReact, onMenuOpen }) {
       {lightboxIndex !== null && <Lightbox images={images} startIndex={lightboxIndex} onClose={() => setLightboxIndex(null)} />}
 
       {/* Reactions + Comments */}
-      <div style={{ padding: '12px 20px 16px' }}>
+      <div style={{ padding: '10px 14px 14px' }}>
         <ReactionBar moment={moment} user={user} onReact={onReact} />
-        <div style={{ height: 1, background: C.mist, margin: '12px 0' }} />
+        <div style={{ height: 1, background: '#f0f0f0', margin: '10px 0' }} />
         <Comments momentId={moment.id} user={user} />
       </div>
     </div>
@@ -897,18 +905,27 @@ export function TimelinePage() {
   const allTabs = [...trips, UPCOMING_TAB]
 
   return (
-    <div style={{ fontFamily: fonts.ui, background: C.parchment, minHeight: '100vh', color: C.ink }}>
+    <div style={{ fontFamily: fonts.ui, minHeight: '100vh', color: C.ink, background: C.parchment, position: 'relative', overflow: 'hidden' }}>
+      {/* Animated mesh background */}
+      <div style={{ position: 'fixed', inset: 0, zIndex: 0, background: 'linear-gradient(135deg, #f5f0e8 0%, #fce4e4 25%, #e8f4f8 50%, #f0e8f5 75%, #f5f0e8 100%)', backgroundSize: '400% 400%', animation: 'meshMove 18s ease infinite' }} />
+      <div style={{ position: 'relative', zIndex: 1 }}>
       <style>{`
         * { -webkit-tap-highlight-color: transparent; }
         button, label { -webkit-tap-highlight-color: transparent; }
         .tab-content { animation: fadeIn 0.15s ease; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes meshMove {
+          0% { background-position: 0% 50%; }
+          50% { background-position: 100% 50%; }
+          100% { background-position: 0% 50%; }
+        }
         img, video { will-change: transform; }
         ::-webkit-scrollbar { display: none; }
+        .day-pill-scroll::-webkit-scrollbar { display: none; }
       `}</style>
 
       {/* ── Header ── */}
-      <header style={{ position: 'sticky', top: 0, zIndex: 100, background: C.night }}>
+      <header style={{ position: 'sticky', top: 0, zIndex: 100, background: 'rgba(13,17,23,0.92)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)' }}>
 
         {/* Top bar */}
         <div style={{ padding: '0 20px', height: 56, display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
@@ -1047,17 +1064,38 @@ export function TimelinePage() {
             </div>
           )}
 
-          {/* Trip actions bar */}
-          {activeSlug !== 'today' && visibleMoments.length > 0 && (
-            <div style={{ display: 'flex', gap: 8, padding: '12px 0', overflowX: 'auto', scrollbarWidth: 'none' }}>
-              {[
-                { label: 'Trip book', action: () => setShowTripBook(true) },
-              ].map(btn => (
-                <button key={btn.label} onClick={btn.action}
-                  style={{ background: C.night, border: `1.5px solid rgba(232,168,56,0.3)`, borderRadius: 100, padding: '7px 16px', fontSize: 12, fontFamily: fonts.ui, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', color: C.amber, flexShrink: 0 }}>
-                  {btn.label}
+          {/* Day pills bar — colorful, one per day */}
+          {days.length > 0 && (
+            <div className="day-pill-scroll" style={{ display: 'flex', gap: 8, padding: '14px 0 6px', overflowX: 'auto', scrollbarWidth: 'none' }}>
+              {days.map((day, idx) => {
+                const color = dayColor(idx)
+                const isActive = activeDay === day
+                return (
+                  <button key={day} onClick={() => setActiveDay(activeDay === day ? null : day)}
+                    style={{
+                      background: isActive ? color : `${color}22`,
+                      color: isActive ? '#fff' : color,
+                      border: `2px solid ${color}`,
+                      borderRadius: 100, padding: '5px 14px',
+                      fontSize: 12, fontFamily: fonts.ui, fontWeight: 700,
+                      cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      transition: 'all 0.15s',
+                      boxShadow: isActive ? `0 2px 12px ${color}55` : 'none',
+                    }}>
+                    {day}
+                    <span style={{ background: isActive ? 'rgba(255,255,255,0.3)' : `${color}44`, borderRadius: 100, padding: '1px 6px', fontSize: 10, fontWeight: 800 }}>
+                      {grouped[day]?.length}
+                    </span>
+                  </button>
+                )
+              })}
+              {activeSlug !== 'today' && visibleMoments.length > 0 && (
+                <button onClick={() => setShowTripBook(true)}
+                  style={{ background: 'rgba(13,17,23,0.08)', border: '1.5px solid rgba(13,17,23,0.15)', borderRadius: 100, padding: '5px 14px', fontSize: 12, fontFamily: fonts.ui, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', color: C.ink, flexShrink: 0, marginLeft: 4 }}>
+                  Trip book
                 </button>
-              ))}
+              )}
             </div>
           )}
 
@@ -1079,20 +1117,25 @@ export function TimelinePage() {
             days.map(day => (
               <div key={day} style={{ marginBottom: 8 }}>
                 {/* Day stamp */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '24px 0 14px' }}>
-                  <div style={{ width: 44, height: 44, borderRadius: 12, background: C.night, color: C.amber, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <div style={{ fontSize: 16, fontWeight: 700, fontFamily: fonts.ui, lineHeight: 1 }}>{day.split(' ')[1]}</div>
-                    <div style={{ fontSize: 8, fontFamily: fonts.ui, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', opacity: 0.7, marginTop: 2 }}>{day.split(' ')[0]}</div>
-                  </div>
-                  <div style={{ flex: 1, height: 1, background: C.mist }} />
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <div style={{ fontSize: 11, fontFamily: fonts.ui, color: C.dim }}>{grouped[day].length} moment{grouped[day].length !== 1 ? 's' : ''}</div>
-                    <button onClick={() => setRecapDay(day)}
-                      style={{ background: C.night, color: C.amber, border: '1.5px solid rgba(232,168,56,0.3)', borderRadius: 100, padding: '3px 12px', fontSize: 11, fontFamily: fonts.ui, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                      Recap
-                    </button>
-                  </div>
-                </div>
+                {(() => {
+                  const dayIdx = days.indexOf(day)
+                  const color = dayColor(dayIdx)
+                  return (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '20px 0 12px' }}>
+                      <div style={{ width: 40, height: 40, borderRadius: '50%', background: color, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: fonts.ui, fontWeight: 800, fontSize: 15, flexShrink: 0, boxShadow: `0 2px 10px ${color}55` }}>
+                        {day.split(' ')[1]}
+                      </div>
+                      <div style={{ fontFamily: fonts.display, fontStyle: 'italic', fontSize: 20, fontWeight: 700, color: C.ink, letterSpacing: '-0.01em' }}>{day}</div>
+                      <div style={{ flex: 1, height: 1, background: 'rgba(0,0,0,0.08)' }} />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <button onClick={() => setRecapDay(day)}
+                          style={{ background: `${color}18`, color: color, border: `1.5px solid ${color}44`, borderRadius: 100, padding: '3px 12px', fontSize: 11, fontFamily: fonts.ui, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                          Recap
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })()}
                 {grouped[day].map(m => (
                   <MomentCard key={m.id} moment={m} user={user} onReact={handleReact} onMenuOpen={setMenuMoment} />
                 ))}
@@ -1153,6 +1196,7 @@ export function TimelinePage() {
           {toast}
         </div>
       )}
+      </div>
     </div>
   )
 }
