@@ -9,6 +9,16 @@ const DEFAULT_TRIPS = [
   { id: 'd93cebae-a4c1-4f71-842c-88410af4450a', slug: 'turkey', label: 'Turkey',       emoji: '🇹🇷' },
   { id: 'ff91d8b7-516c-4a87-9bdf-5bac2b398f93', slug: 'saudi',  label: 'Saudi Arabia', emoji: '🇸🇦' },
 ]
+
+async function loadTripCovers(trips, setTrips) {
+  const ids = trips.filter(t => t.id).map(t => t.id)
+  const { data } = await supabase.from('trips').select('id, cover_url').in('id', ids)
+  if (!data) return
+  setTrips(ts => ts.map(t => {
+    const row = data.find(r => r.id === t.id)
+    return row?.cover_url ? { ...t, cover: row.cover_url } : t
+  }))
+}
 const UPCOMING_TAB = { slug: 'upcoming', label: 'Upcoming', emoji: '🗓️', fixed: true }
 const EMOJI_OPTIONS = ['✈️','🌍','🏔️','🏖️','🏙️','🗺️','🎒','🚂','🛳️','🏕️','🍜','☕','🎭','📸','🌅','⛩️','🕌','🏛️','🌴','❄️']
 const REACTIONS = ['❤️','😍','🔥','😂','😮','👏','🙌','💯']
@@ -274,14 +284,19 @@ function ReactionBar({ moment, user, onReact }) {
 function MomentCard({ moment, user, onReact, onMenuOpen }) {
   const [lightboxIndex, setLightboxIndex] = useState(null)
   const time = format(parseISO(moment.created_at), 'h:mm a')
-  const displayName = user?.user_metadata?.full_name ?? user?.email ?? 'Traveller'
+  // Use the uploader's stored name/avatar — not the current viewer's
+  const displayName = moment.user_name ?? 'Traveller'
+  const displayAvatar = moment.user_avatar
   const images = moment.moment_images ?? []
 
   return (
     <div style={s.card}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px 0' }}>
-        <Avatar user={user} />
+        {displayAvatar
+          ? <img src={displayAvatar} alt="" style={{ width: 34, height: 34, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+          : <div style={{ width: 34, height: 34, borderRadius: '50%', background: '#b85c3a', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, flexShrink: 0 }}>{displayName[0]?.toUpperCase() ?? '?'}</div>
+        }
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 13, fontWeight: 600 }}>{displayName}</div>
           <div style={{ fontSize: 11, color: '#9a9088' }}>{time}</div>
@@ -439,6 +454,8 @@ export function TimelinePage() {
   const [deleting, setDeleting] = useState(false)
   const [toast, setToast] = useState('')
 
+  useEffect(() => { loadTripCovers(trips, setTrips) }, [])
+
   const activeTrip = trips.find(t => t.slug === activeSlug)
   const { moments, loading, addMoment, refetch } = useMoments(activeTrip?.id ?? null)
 
@@ -473,7 +490,12 @@ export function TimelinePage() {
     if (!user) return
     setPosting(true)
     try {
-      await addMoment({ ...payload, userId: user.id })
+      await addMoment({
+        ...payload,
+        userId: user.id,
+        userName: user.user_metadata?.full_name ?? user.email,
+        userAvatar: user.user_metadata?.avatar_url ?? null,
+      })
       setShowAddMoment(false)
       showToast('Moment posted! ✨')
     } catch(e) { showToast('Error: ' + e.message) }
@@ -503,6 +525,22 @@ export function TimelinePage() {
       showToast('Moment deleted')
     } catch(e) { showToast('Delete failed') }
     finally { setDeleting(false) }
+  }
+
+  async function handleCoverUpload(e, slug) {
+    const file = e.target.files[0]
+    if (!file || !user) return
+    const trip = trips.find(t => t.slug === slug)
+    if (!trip) return
+    const ext = file.name.split('.').pop()
+    const path = `covers/${trip.id}.${ext}`
+    const { error: uploadErr } = await supabase.storage.from('moment-images').upload(path, file, { upsert: true })
+    if (uploadErr) { showToast('Cover upload failed'); return }
+    const { data: { publicUrl } } = supabase.storage.from('moment-images').getPublicUrl(path)
+    // Save to DB
+    await supabase.from('trips').update({ cover_url: publicUrl }).eq('id', trip.id)
+    setTrips(ts => ts.map(t => t.slug === slug ? { ...t, cover: publicUrl } : t))
+    showToast('Cover updated! 🖼️')
   }
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 3000) }
@@ -558,13 +596,7 @@ export function TimelinePage() {
                 {user && (
                   <label style={{ marginLeft: 'auto', background: 'rgba(255,255,255,0.2)', border: '1px solid rgba(255,255,255,0.4)', borderRadius: 8, padding: '6px 12px', fontSize: 12, color: '#fff', cursor: 'pointer', backdropFilter: 'blur(4px)' }}>
                     📷 Change cover
-                    <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => {
-                      const file = e.target.files[0]
-                      if (!file) return
-                      const reader = new FileReader()
-                      reader.onload = ev => setTrips(ts => ts.map(t => t.slug === activeSlug ? { ...t, cover: ev.target.result } : t))
-                      reader.readAsDataURL(file)
-                    }} />
+                    <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleCoverUpload(e, activeSlug)} />
                   </label>
                 )}
               </div>
@@ -575,13 +607,7 @@ export function TimelinePage() {
               {user && (
                 <label style={{ background: '#f7f3ee', border: '1px solid #ece8e2', borderRadius: 8, padding: '6px 12px', fontSize: 12, color: '#6b6258', cursor: 'pointer' }}>
                   📷 Add cover
-                  <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => {
-                    const file = e.target.files[0]
-                    if (!file) return
-                    const reader = new FileReader()
-                    reader.onload = ev => setTrips(ts => ts.map(t => t.slug === activeSlug ? { ...t, cover: ev.target.result } : t))
-                    reader.readAsDataURL(file)
-                  }} />
+                  <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleCoverUpload(e, activeSlug)} />
                 </label>
               )}
             </div>
