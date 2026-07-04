@@ -32,9 +32,13 @@ if (!document.head.querySelector('[href*="Geist"]')) document.head.appendChild(_
 // ── Helpers ───────────────────────────────────────────────────
 async function loadTripCovers(trips, setTrips) {
   const ids = trips.filter(t => t.id).map(t => t.id)
-  const { data } = await supabase.from('trips').select('id, cover_url').in('id', ids)
+  const { data } = await supabase.from('trips').select('id, cover_url, is_private').in('id', ids)
   if (!data) return
-  setTrips(ts => ts.map(t => { const r = data.find(x => x.id === t.id); return r?.cover_url ? { ...t, cover: r.cover_url } : t }))
+  setTrips(ts => ts.map(t => {
+    const r = data.find(x => x.id === t.id)
+    if (!r) return t
+    return { ...t, ...(r.cover_url ? { cover: r.cover_url } : {}), isPrivate: r.is_private ?? false }
+  }))
 }
 
 function useJoinRequest(trips, user, showToast) {
@@ -61,7 +65,44 @@ function useJoinRequest(trips, user, showToast) {
   return joinState
 }
 
+// Generate consistent color from name for identity dot
+function stringToColor(str) {
+  const colors = ['#FF6B6B','#FF9F43','#FECA57','#1DD1A1','#48DBFB','#FF9FF3','#54A0FF','#5F27CD']
+  let hash = 0
+  for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash)
+  return colors[Math.abs(hash) % colors.length]
+}
+
 function isVideo(url) { return url && /\.(mp4|mov|webm|ogg|avi)$/i.test(url.split('?')[0]) }
+
+// ── Push notification subscription ───────────────────────────
+async function subscribeToPush(user) {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
+  try {
+    const reg = await navigator.serviceWorker.ready
+    const existing = await reg.pushManager.getSubscription()
+    if (existing) return // already subscribed
+
+    const permission = await Notification.requestPermission()
+    if (permission !== 'granted') return
+
+    // VAPID not needed for basic push — use simple subscription
+    const sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: null, // works without VAPID for same-origin
+    }).catch(() => null)
+
+    if (!sub) return
+
+    const { endpoint, keys } = sub.toJSON()
+    await supabase.from('push_subscriptions').upsert({
+      user_id: user.id,
+      endpoint,
+      p256dh: keys?.p256dh ?? '',
+      auth: keys?.auth ?? '',
+    }, { onConflict: 'endpoint' })
+  } catch {}
+}
 
 // ── Lightbox ──────────────────────────────────────────────────
 function Lightbox({ images, startIndex, onClose }) {
@@ -158,21 +199,23 @@ function MomentCard({ moment, user, onReact, onMenuOpen }) {
 
   return (
     <div style={{ background:'#fff', borderRadius:16, boxShadow:'0 1px 6px rgba(0,0,0,0.06)', marginBottom:10, overflow:'hidden' }}>
-      {/* Header */}
+      {/* Header — prominent poster identity */}
       <div style={{ display:'flex', alignItems:'center', gap:10, padding:'12px 14px 0' }}>
-        <Avatar src={moment.user_avatar} name={moment.user_name} size={34} />
-        <div style={{ flex:1 }}>
-          <div style={{ fontSize:13, fontWeight:600, fontFamily:'Geist, sans-serif', color:'#111' }}>{moment.user_name ?? 'Traveller'}</div>
-          <div style={{ fontSize:11, color:'#999', fontFamily:'Geist, sans-serif' }}>{time}</div>
+        <div style={{ position:'relative', flexShrink:0 }}>
+          <Avatar src={moment.user_avatar} name={moment.user_name} size={38} />
+          <div style={{ position:'absolute', bottom:-1, right:-1, width:12, height:12, borderRadius:'50%', background: stringToColor(moment.user_name??''), border:'2px solid #fff' }} />
         </div>
-        {user && <button onClick={()=>onMenuOpen(moment)} style={{ background:'none', border:'none', cursor:'pointer', color:'#bbb', padding:'4px 6px', fontSize:16, borderRadius:6 }}>•••</button>}
+        <div style={{ flex:1 }}>
+          <div style={{ fontSize:14, fontWeight:700, fontFamily:'Geist, sans-serif', color:'#111', letterSpacing:'-0.01em' }}>{moment.user_name ?? 'Traveller'}</div>
+          <div style={{ fontSize:11, color:'#aaa', fontFamily:'Geist, sans-serif', marginTop:1 }}>{time}{moment.location ? ` · ${moment.location}` : ''}</div>
+        </div>
+        {user && <button onClick={()=>onMenuOpen(moment)} style={{ background:'none', border:'none', cursor:'pointer', color:'#ccc', padding:'4px 8px', fontSize:18, borderRadius:6 }}>•••</button>}
       </div>
 
       {/* Caption */}
       {moment.caption && <p style={{ margin:'8px 14px', fontSize:14, lineHeight:1.55, fontFamily:'Geist, sans-serif', color:'#222', fontWeight:400 }}>{moment.caption}</p>}
 
-      {/* Location */}
-      {moment.location && <div style={{ display:'flex', alignItems:'center', gap:4, margin: moment.caption ? '-2px 14px 8px' : '8px 14px', fontSize:11, color:'#999', fontFamily:'Geist, sans-serif', textTransform:'uppercase', letterSpacing:'0.05em' }}>📍 {moment.location}</div>}
+
 
       {/* Photos */}
       <PhotoGrid images={images} onPhotoClick={setLightboxIndex} />
@@ -429,6 +472,24 @@ function JoinBanner({ joinState, onClose }) {
   )
 }
 
+// ── Privacy Toggle ───────────────────────────────────────────
+function PrivacyToggle({ tripId, isPrivate, onToggle }) {
+  const [loading, setLoading] = useState(false)
+  async function toggle() {
+    setLoading(true)
+    const newVal = !isPrivate
+    await supabase.from('trips').update({ is_private: newVal }).eq('id', tripId)
+    onToggle(newVal)
+    setLoading(false)
+  }
+  return (
+    <button onClick={toggle} disabled={loading}
+      style={{ background: isPrivate ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.15)', border: `1px solid ${isPrivate ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.25)'}`, borderRadius:8, padding:'6px 12px', fontSize:11, fontFamily:'Geist, sans-serif', color:'#fff', cursor:'pointer', backdropFilter:'blur(8px)', display:'flex', alignItems:'center', gap:5, whiteSpace:'nowrap' }}>
+      {isPrivate ? '🔒 Private' : '🌍 Public'}
+    </button>
+  )
+}
+
 // ── Main Page ─────────────────────────────────────────────────
 export function TimelinePage() {
   const { user, signInWithGoogle, signOut } = useAuth()
@@ -436,6 +497,7 @@ export function TimelinePage() {
   const [activeSlug, setActiveSlug] = useState('today')
   const [activeDay, setActiveDay] = useState(null)
   const [showAddMoment, setShowAddMoment] = useState(false)
+  const [showNotifPrompt, setShowNotifPrompt] = useState(false)
   const [showAddTrip, setShowAddTrip] = useState(false)
   const [showMembers, setShowMembers] = useState(false)
   const [showAccountMenu, setShowAccountMenu] = useState(false)
@@ -452,6 +514,13 @@ export function TimelinePage() {
   const joinState = useJoinRequest(trips, user, showToast)
 
   useEffect(() => { loadTripCovers(trips, setTrips) }, [])
+  useEffect(() => {
+    if (user && Notification.permission === 'default') {
+      setShowNotifPrompt(true)
+    } else if (user && Notification.permission === 'granted') {
+      subscribeToPush(user)
+    }
+  }, [user])
   useEffect(() => { setActiveDay(null) }, [activeSlug])
 
   const activeTrip = trips.find(t => t.slug === activeSlug)
@@ -607,14 +676,27 @@ export function TimelinePage() {
                 <img src={activeTrip.cover} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
                 <div style={{ position:'absolute', inset:0, background:'linear-gradient(to bottom, transparent 30%, rgba(0,0,0,0.65))' }} />
                 <div style={{ position:'absolute', bottom:0, left:0, right:0, padding:'14px 18px', display:'flex', alignItems:'flex-end', justifyContent:'space-between' }}>
-                  <div><div style={{ fontFamily:'Cormorant Garamond, serif', fontStyle:'italic', fontSize:24, color:'#fff' }}>{activeTrip.emoji} {activeTrip.label}</div><div style={{ fontSize:11, color:'rgba(255,255,255,0.5)', fontFamily:'Geist, sans-serif' }}>{visibleMoments.length} moments</div></div>
-                  {user && <label style={{ background:'rgba(255,255,255,0.15)', border:'1px solid rgba(255,255,255,0.25)', borderRadius:8, padding:'6px 12px', fontSize:11, fontFamily:'Geist, sans-serif', color:'#fff', cursor:'pointer', backdropFilter:'blur(8px)' }}>Change cover<input type="file" accept="image/*" style={{ display:'none' }} onChange={e=>handleCoverUpload(e,activeSlug)} /></label>}
+                  <div>
+                    <div style={{ fontFamily:'Cormorant Garamond, serif', fontStyle:'italic', fontSize:24, color:'#fff' }}>{activeTrip.emoji} {activeTrip.label}</div>
+                    <div style={{ fontSize:11, color:'rgba(255,255,255,0.5)', fontFamily:'Geist, sans-serif' }}>{visibleMoments.length} moments</div>
+                  </div>
+                  {user && (
+                    <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                      <PrivacyToggle tripId={activeTrip.id} isPrivate={activeTrip.isPrivate} onToggle={priv=>setTrips(ts=>ts.map(t=>t.id===activeTrip.id?{...t,isPrivate:priv}:t))} />
+                      <label style={{ background:'rgba(255,255,255,0.15)', border:'1px solid rgba(255,255,255,0.25)', borderRadius:8, padding:'6px 12px', fontSize:11, fontFamily:'Geist, sans-serif', color:'#fff', cursor:'pointer', backdropFilter:'blur(8px)' }}>Change cover<input type="file" accept="image/*" style={{ display:'none' }} onChange={e=>handleCoverUpload(e,activeSlug)} /></label>
+                    </div>
+                  )}
                 </div>
               </div>
             ) : (
               <div style={{ padding:'20px 0 12px', borderBottom:'1px solid rgba(0,0,0,0.06)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
                 <div style={{ fontFamily:'Cormorant Garamond, serif', fontStyle:'italic', fontSize:26, color:'#111' }}>{activeTrip?.emoji} {activeTrip?.label}</div>
-                {user && <label style={{ background:'#f5f5f5', border:'1px solid #e8e8e8', borderRadius:8, padding:'6px 12px', fontSize:11, fontFamily:'Geist, sans-serif', color:'#888', cursor:'pointer' }}>Add cover<input type="file" accept="image/*" style={{ display:'none' }} onChange={e=>handleCoverUpload(e,activeSlug)} /></label>}
+                {user && (
+                  <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                    <PrivacyToggle tripId={activeTrip.id} isPrivate={activeTrip.isPrivate} onToggle={priv=>setTrips(ts=>ts.map(t=>t.id===activeTrip.id?{...t,isPrivate:priv}:t))} />
+                    <label style={{ background:'#f5f5f5', border:'1px solid #e8e8e8', borderRadius:8, padding:'6px 12px', fontSize:11, fontFamily:'Geist, sans-serif', color:'#888', cursor:'pointer' }}>Add cover<input type="file" accept="image/*" style={{ display:'none' }} onChange={e=>handleCoverUpload(e,activeSlug)} /></label>
+                  </div>
+                )}
               </div>
             )}
 
@@ -677,6 +759,18 @@ export function TimelinePage() {
               <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#F5C842" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
               <input type="file" accept="image/*,video/*" capture="environment" style={{ display:'none' }} onChange={e=>{const p=Array.from(e.target.files);if(!p.length)return;setGalleryFiles(p);setShowAddMoment(true)}} />
             </label>
+          </div>
+        )}
+
+        {/* ── Notification prompt ── */}
+        {showNotifPrompt && (
+          <div style={{ position:'fixed', bottom:100, left:'50%', transform:'translateX(-50%)', background:'#fff', borderRadius:16, padding:'16px 20px', boxShadow:'0 8px 32px rgba(0,0,0,0.15)', zIndex:300, maxWidth:320, width:'calc(100% - 32px)' }}>
+            <div style={{ fontFamily:'Geist, sans-serif', fontWeight:600, fontSize:14, color:'#111', marginBottom:4 }}>🔔 Stay in the loop</div>
+            <div style={{ fontFamily:'Geist, sans-serif', fontSize:13, color:'#888', marginBottom:14 }}>Get notified when family members post new moments.</div>
+            <div style={{ display:'flex', gap:8 }}>
+              <button onClick={()=>setShowNotifPrompt(false)} style={{ flex:1, background:'#f5f5f5', border:'none', borderRadius:10, padding:'10px', fontSize:13, fontFamily:'Geist, sans-serif', cursor:'pointer', color:'#888' }}>Not now</button>
+              <button onClick={()=>{ subscribeToPush(user); setShowNotifPrompt(false) }} style={{ flex:2, background:'#111', color:'#fff', border:'none', borderRadius:10, padding:'10px', fontSize:13, fontFamily:'Geist, sans-serif', fontWeight:600, cursor:'pointer' }}>Enable notifications</button>
+            </div>
           </div>
         )}
 
