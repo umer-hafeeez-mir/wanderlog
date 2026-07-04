@@ -249,11 +249,24 @@ function DocViewer({ doc, onClose }) {
             onDoubleClick={() => setZoom(z => z === 1 ? 2 : 1)}
           />
         ) : (
-          <iframe
-            src={url}
-            style={{ width:'100%', height:'100%', border:'none', display:'block' }}
-            title="Document"
-          />
+          /* PDFs — open in native browser viewer for best mobile experience */
+          <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:16, padding:24, textAlign:'center', flex:1 }}>
+            <div style={{ fontSize:64 }}>📄</div>
+            <div style={{ fontFamily:'Geist, sans-serif', fontSize:16, fontWeight:600, color:'#fff' }}>
+              {doc.label || docLabel(doc.doc_type)}
+            </div>
+            <div style={{ fontFamily:'Geist, sans-serif', fontSize:13, color:'rgba(255,255,255,0.5)' }}>
+              PDFs open best in your browser's native viewer
+            </div>
+            <a href={url} target="_blank" rel="noreferrer"
+              style={{ background:'#fff', color:'#111', border:'none', borderRadius:12, padding:'13px 28px', fontSize:15, fontFamily:'Geist, sans-serif', fontWeight:700, cursor:'pointer', textDecoration:'none', display:'block' }}>
+              Open PDF
+            </a>
+            <a href={url} download
+              style={{ color:'rgba(255,255,255,0.5)', fontSize:13, fontFamily:'Geist, sans-serif', textDecoration:'underline', cursor:'pointer' }}>
+              Download instead
+            </a>
+          </div>
         )}
       </div>
 
