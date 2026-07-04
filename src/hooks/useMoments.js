@@ -7,11 +7,12 @@ export function useMoments(tripId) {
   const [error, setError] = useState(null)
 
   const fetchMoments = useCallback(async () => {
+    if (!tripId) { setMoments([]); setLoading(false); return }
     setLoading(true)
     const { data, error } = await supabase
       .from('moments')
       .select(`
-        id, user_id, caption, location, created_at,
+        id, user_id, user_name, user_avatar, caption, location, created_at,
         moment_images (id, url, position),
         reactions (id, user_id, emoji)
       `)
@@ -19,18 +20,17 @@ export function useMoments(tripId) {
       .order('created_at', { ascending: true })
 
     if (error) { setError(error.message); setLoading(false); return }
-
     setMoments(data ?? [])
     setLoading(false)
   }, [tripId])
 
   useEffect(() => { fetchMoments() }, [fetchMoments])
 
-  async function addMoment({ caption, location, imageFiles, userId }) {
-    // 1. Insert moment row
+  async function addMoment({ caption, location, imageFiles, userId, userName, userAvatar }) {
+    // 1. Insert moment row — store uploader info permanently
     const { data: moment, error: momentErr } = await supabase
       .from('moments')
-      .insert({ trip_id: tripId, user_id: userId, caption, location })
+      .insert({ trip_id: tripId, user_id: userId, user_name: userName, user_avatar: userAvatar, caption, location })
       .select()
       .single()
 
@@ -66,7 +66,7 @@ export function useMoments(tripId) {
     return moment
   }
 
-  async function toggleReaction(momentId, userId, emoji = '🫶') {
+  async function toggleReaction(momentId, userId, emoji) {
     const existing = moments
       .find(m => m.id === momentId)
       ?.reactions?.find(r => r.user_id === userId && r.emoji === emoji)
@@ -76,7 +76,6 @@ export function useMoments(tripId) {
     } else {
       await supabase.from('reactions').insert({ moment_id: momentId, user_id: userId, emoji })
     }
-
     await fetchMoments()
   }
 
