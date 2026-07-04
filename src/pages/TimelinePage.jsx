@@ -316,6 +316,7 @@ function MomentCard({ moment, user, onReact, onMenuOpen }) {
 function MomentMenu({ moment, user, onDelete, onClose }) {
   const isOwner = user?.id === moment.user_id
   const images = moment.moment_images ?? []
+  const [copied, setCopied] = useState(false)
 
   async function savePhoto() {
     try {
@@ -323,42 +324,61 @@ function MomentMenu({ moment, user, onDelete, onClose }) {
       const blob = await res.blob()
       const a = document.createElement('a')
       a.href = URL.createObjectURL(blob)
-      a.download = 'wanderlog-photo.jpg'
+      a.download = 'wanderlog.jpg'
       a.click()
     } catch {}
     onClose()
   }
 
   function shareWhatsApp() {
-    const text = encodeURIComponent('Check out this moment on Wanderlog! ' + window.location.href)
+    const text = encodeURIComponent('Check out my trip on Wanderlog! ' + window.location.href)
     window.open('https://wa.me/?text=' + text, '_blank')
     onClose()
   }
 
-  function copyLink() {
-    navigator.clipboard?.writeText(window.location.href)
-    onClose()
+  async function copyLink() {
+    await navigator.clipboard?.writeText(window.location.href)
+    setCopied(true)
+    setTimeout(onClose, 800)
   }
 
   const items = [
-    { icon: '💬', label: 'Share on WhatsApp', action: shareWhatsApp },
-    { icon: '🔗', label: 'Copy link', action: copyLink },
-    ...(images.length > 0 ? [{ icon: '💾', label: 'Save photo', action: savePhoto }] : []),
-    ...(isOwner ? [{ icon: '🗑️', label: 'Delete moment', action: () => { onDelete(moment); onClose() }, danger: true }] : []),
+    { label: 'WhatsApp', icon: '↗', action: shareWhatsApp },
+    { label: copied ? 'Copied!' : 'Copy link', icon: copied ? '✓' : '⌘', action: copyLink },
+    ...(images.length > 0 ? [{ label: 'Save photo', icon: '↓', action: savePhoto }] : []),
+    ...(isOwner ? [{ label: 'Delete', icon: '×', action: () => { onDelete(moment); onClose() }, danger: true }] : []),
   ]
 
   return (
     <div onClick={e => e.target === e.currentTarget && onClose()}
-      style={{ position: 'fixed', inset: 0, background: 'rgba(13,17,23,0.5)', zIndex: 400, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-      <div style={{ background: '#fff', borderRadius: '24px 24px 0 0', width: '100%', maxWidth: 560, paddingBottom: 32, overflow: 'hidden' }}>
-        <div style={{ width: 40, height: 4, background: C.mist, borderRadius: 2, margin: '14px auto 6px' }} />
-        {items.map(item => (
-          <button key={item.label} onClick={item.action}
-            style={{ width: '100%', background: 'none', border: 'none', borderTop: `1px solid ${C.ghost}`, padding: '15px 24px', fontSize: 15, fontFamily: fonts.ui, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 16, color: item.danger ? '#e53e3e' : C.ink, textAlign: 'left', fontWeight: item.danger ? 500 : 400 }}>
-            <span style={{ fontSize: 20, width: 28, textAlign: 'center' }}>{item.icon}</span> {item.label}
-          </button>
-        ))}
-        <button onClick={onClose} style={{ width: '100%', background: 'none', border: 'none', borderTop: `1px solid ${C.ghost}`, padding: '15px 24px', fontSize: 15, fontFamily: fonts.ui, cursor: 'pointer', color: C.dim, textAlign: 'center' }}>Cancel</button>
+      style={{ position: 'fixed', inset: 0, zIndex: 400, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', padding: '0 16px 32px' }}>
+      <div style={{ width: '100%', maxWidth: 560, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {/* Action pills */}
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+          {items.map(item => (
+            <button key={item.label} onClick={item.action}
+              style={{
+                background: item.danger ? '#e53e3e' : 'rgba(255,255,255,0.96)',
+                color: item.danger ? '#fff' : C.ink,
+                border: 'none', borderRadius: 100,
+                padding: '10px 20px',
+                fontSize: 13, fontFamily: fonts.ui, fontWeight: 600,
+                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 7,
+                boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+                backdropFilter: 'blur(12px)',
+                letterSpacing: '-0.01em',
+                whiteSpace: 'nowrap',
+              }}>
+              <span style={{ fontSize: 15, fontWeight: 700, lineHeight: 1 }}>{item.icon}</span>
+              {item.label}
+            </button>
+          ))}
+        </div>
+        {/* Cancel */}
+        <button onClick={onClose}
+          style={{ background: 'rgba(255,255,255,0.85)', color: C.dim, border: 'none', borderRadius: 100, padding: '11px', fontSize: 13, fontFamily: fonts.ui, fontWeight: 500, cursor: 'pointer', backdropFilter: 'blur(12px)', boxShadow: '0 2px 12px rgba(0,0,0,0.1)' }}>
+          Cancel
+        </button>
       </div>
     </div>
   )
@@ -395,7 +415,7 @@ function AddMomentModal({ onClose, onAdd, loading }) {
 
   return (
     <div onClick={e => e.target === e.currentTarget && onClose()} style={{ position: 'fixed', inset: 0, background: 'rgba(13,17,23,0.6)', zIndex: 300, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-      <div style={{ background: C.parchment, borderRadius: '28px 28px 0 0', padding: '28px 24px 44px', width: '100%', maxWidth: 560 }}>
+      <div style={{ background: C.parchment, borderRadius: '28px 28px 0 0', padding: '20px 20px 36px', width: '100%', maxWidth: 560, maxHeight: '85vh', overflowY: 'auto' }}>
         <div style={{ width: 40, height: 4, background: C.mist, borderRadius: 2, margin: '-14px auto 20px' }} />
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
           <div style={{ fontFamily: fonts.display, fontSize: 22, fontStyle: 'italic', color: C.ink }}>New moment</div>
@@ -450,7 +470,7 @@ function AddTripModal({ onClose, onAdd }) {
   const [emoji, setEmoji] = useState('✈️')
   return (
     <div onClick={e => e.target === e.currentTarget && onClose()} style={{ position: 'fixed', inset: 0, background: 'rgba(13,17,23,0.6)', zIndex: 300, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-      <div style={{ background: C.parchment, borderRadius: '28px 28px 0 0', padding: '28px 24px 44px', width: '100%', maxWidth: 560 }}>
+      <div style={{ background: C.parchment, borderRadius: '28px 28px 0 0', padding: '20px 20px 36px', width: '100%', maxWidth: 560, maxHeight: '85vh', overflowY: 'auto' }}>
         <div style={{ width: 40, height: 4, background: C.mist, borderRadius: 2, margin: '-14px auto 20px' }} />
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
           <div style={{ fontFamily: fonts.display, fontSize: 22, fontStyle: 'italic', color: C.ink }}>New trip</div>
