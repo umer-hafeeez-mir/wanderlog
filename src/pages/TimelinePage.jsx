@@ -589,7 +589,7 @@ function MembersPanel({ trips, user, onClose }) {
               <div style={{ marginTop: 8, fontSize: 12, color: copyMsg.startsWith('http') ? '#1a1612' : '#22a06b', background: '#f0faf5', borderRadius: 8, padding: '8px 12px', wordBreak: 'break-all' }}>
                 {copyMsg}
               </div>
-            </div>
+            )}
 
             {/* Pending requests */}
             {pending.length > 0 && (
