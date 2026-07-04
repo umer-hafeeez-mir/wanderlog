@@ -187,6 +187,14 @@ function Comments({ momentId, user }) {
 // ── Moment Card ───────────────────────────────────────────────
 function MomentCard({ moment, user, onReact, onMenuOpen, cardIdx = 0 }) {
   const [lightboxIndex, setLightboxIndex] = useState(null)
+  const [showHeartBurst, setShowHeartBurst] = useState(false)
+
+  function handleDoubleTap(e) {
+    if (!user) return
+    onReact(moment.id, '❤️')
+    setShowHeartBurst(true)
+    setTimeout(() => setShowHeartBurst(false), 800)
+  }
   const images = moment.moment_images ?? []
   const reactions = moment.reactions ?? []
   const heartCount = reactions.filter(r => r.emoji === '❤️').length
@@ -201,7 +209,16 @@ function MomentCard({ moment, user, onReact, onMenuOpen, cardIdx = 0 }) {
   const time = format(parseISO(moment.created_at), 'h:mm a')
 
   return (
-    <div className='card-in moment-card' style={{ background:'#fff', borderRadius:16, boxShadow:'0 2px 12px rgba(0,0,0,0.07)', marginBottom:10, overflow:'hidden', animationDelay:`${cardIdx * 0.06}s` }}>
+    <div className='card-in moment-card'
+      style={{ background:'#fff', borderRadius:16, boxShadow:'0 2px 12px rgba(0,0,0,0.07)', marginBottom:10, overflow:'hidden', animationDelay:`${cardIdx * 0.06}s`, position:'relative' }}
+      onDoubleClick={handleDoubleTap}>
+      {/* Heart burst on double tap */}
+      {showHeartBurst && (
+        <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', pointerEvents:'none', zIndex:10 }}>
+          <div style={{ fontSize:72, animation:'heartBurst 0.8s ease forwards' }}>❤️</div>
+          <style>{`@keyframes heartBurst { 0%{opacity:0;transform:scale(0.3)} 30%{opacity:1;transform:scale(1.2)} 60%{opacity:1;transform:scale(1)} 100%{opacity:0;transform:scale(0.8)} }`}</style>
+        </div>
+      )}
       {/* Header — prominent poster identity */}
       <div style={{ display:'flex', alignItems:'center', gap:10, padding:'12px 14px 0' }}>
         <div style={{ position:'relative', flexShrink:0 }}>
@@ -226,12 +243,16 @@ function MomentCard({ moment, user, onReact, onMenuOpen, cardIdx = 0 }) {
 
       {/* Reactions */}
       <div style={{ padding:'10px 14px 0', display:'flex', alignItems:'center', gap:6, flexWrap:'wrap', position:'relative' }}>
-        {/* Heart */}
+        {/* Heart — animated */}
         <button onClick={()=>user&&onReact(moment.id,'❤️')} disabled={!user}
-          style={{ background:heartMine?'#fff0f0':'#f5f5f5', border:`1.5px solid ${heartMine?'#ff6b6b':'#e8e8e8'}`, borderRadius:100, padding:'4px 12px', fontSize:13, cursor:user?'pointer':'default', display:'flex', alignItems:'center', gap:5, opacity:user?1:0.6, transition:'all 0.15s' }}>
-          <span style={{ fontSize:15 }}>🤍</span>
-          <span style={{ fontFamily:'Geist, sans-serif', fontWeight:600, fontSize:12, color:heartMine?'#e53e3e':'#666' }}>{heartCount}</span>
-          {heartCount > 0 && <span style={{ fontFamily:'Geist, sans-serif', fontSize:11, color:'#999' }}>{heartCount===1?'love':'loves'}</span>}
+          style={{ background:heartMine?'#fff0f0':'#f5f5f5', border:`1.5px solid ${heartMine?'#ff6b6b':'#e8e8e8'}`, borderRadius:100, padding:'5px 14px', fontSize:13, cursor:user?'pointer':'default', display:'flex', alignItems:'center', gap:6, opacity:user?1:0.55, transition:'all 0.2s', transform:'scale(1)' }}
+          onMouseEnter={e=>{ if(user) e.currentTarget.style.transform='scale(1.05)' }}
+          onMouseLeave={e=>e.currentTarget.style.transform='scale(1)'}
+          onMouseDown={e=>e.currentTarget.style.transform='scale(0.95)'}
+          onMouseUp={e=>e.currentTarget.style.transform='scale(1.05)'}>
+          <span style={{ fontSize:16, display:'inline-block', transition:'transform 0.3s cubic-bezier(0.36,0.07,0.19,0.97)', transform: heartMine ? 'scale(1.2)' : 'scale(1)' }}>{heartMine ? '❤️' : '🤍'}</span>
+          <span style={{ fontFamily:'Geist, sans-serif', fontWeight:700, fontSize:12, color:heartMine?'#e53e3e':'#666', minWidth:8 }}>{heartCount}</span>
+          {heartCount > 0 && <span style={{ fontFamily:'Geist, sans-serif', fontSize:11, color:'#bbb' }}>{heartCount===1?'love':'loves'}</span>}
         </button>
 
         {/* Other reactions */}
@@ -744,6 +765,13 @@ export function TimelinePage() {
               </div>
             )}
 
+            {/* Swipe hint — shown briefly */}
+            {visibleMoments.length > 0 && days.length > 1 && (
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:6, padding:'8px 0 0', opacity:0.4 }}>
+                <span style={{ fontSize:10, fontFamily:'Geist, sans-serif', color:'#888', letterSpacing:'0.05em' }}>← swipe to change trip →</span>
+              </div>
+            )}
+
             {/* Day pills */}
             {days.length > 0 && (
               <div className='fade-up' style={{ display:'flex', gap:8, padding:'12px 0 4px', overflowX:'auto', scrollbarWidth:'none' }}>
@@ -814,6 +842,60 @@ export function TimelinePage() {
               <input type="file" accept="image/*,video/*" capture="environment" style={{ display:'none' }} onChange={e=>{const p=Array.from(e.target.files);if(!p.length)return;setGalleryFiles(p);setShowAddMoment(true)}} />
             </label>
           </div>
+        )}
+
+        {/* ── Profile side drawer (X-style) ── */}
+        {showAccountMenu && (
+          <>
+            {/* Backdrop */}
+            <div
+              onClick={()=>setShowAccountMenu(false)}
+              style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.35)', zIndex:400, backdropFilter:'blur(2px)', animation:'fadeIn 0.2s ease' }}
+            />
+            {/* Drawer — slides in from right */}
+            <div style={{ position:'fixed', top:0, right:0, bottom:0, width:280, background:'#fff', zIndex:401, boxShadow:'-8px 0 40px rgba(0,0,0,0.15)', display:'flex', flexDirection:'column', animation:'drawerIn 0.25s cubic-bezier(0.32,0.72,0,1) both' }}>
+              <style>{`@keyframes drawerIn { from{transform:translateX(100%)} to{transform:translateX(0)} }`}</style>
+
+              {/* Profile section */}
+              <div style={{ padding:'52px 20px 20px', borderBottom:'1px solid #f0f0f0' }}>
+                <div style={{ width:56, height:56, borderRadius:'50%', overflow:'hidden', marginBottom:12, border:'2px solid #f0f0f0' }}>
+                  <Avatar src={user.user_metadata?.avatar_url} name={user.email} size={56} />
+                </div>
+                <div style={{ fontFamily:'Geist, sans-serif', fontWeight:700, fontSize:16, color:'#111', marginBottom:2 }}>
+                  {user.user_metadata?.full_name ?? 'Traveller'}
+                </div>
+                <div style={{ fontFamily:'Geist, sans-serif', fontSize:12, color:'#aaa', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                  {user.email}
+                </div>
+              </div>
+
+              {/* Menu items */}
+              <div style={{ flex:1, overflowY:'auto' }}>
+                {[
+                  { label:'Travel Documents', icon:'🗂️', action:()=>{setShowDocs(true);setShowAccountMenu(false)} },
+                  ...(user.email===ADMIN_EMAIL ? [{ label:'Trip Members', icon:'👥', action:()=>{setShowMembers(true);setShowAccountMenu(false)} }] : []),
+                ].map(item => (
+                  <button key={item.label} onClick={item.action}
+                    style={{ width:'100%', background:'none', border:'none', borderBottom:'1px solid #f8f8f8', padding:'16px 20px', display:'flex', alignItems:'center', gap:14, cursor:'pointer', fontFamily:'Geist, sans-serif', fontSize:14, color:'#111', textAlign:'left', transition:'background 0.1s' }}
+                    onMouseEnter={e=>e.currentTarget.style.background='#fafafa'}
+                    onMouseLeave={e=>e.currentTarget.style.background='none'}>
+                    <span style={{ fontSize:20, width:28, textAlign:'center' }}>{item.icon}</span>
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Sign out at bottom */}
+              <div style={{ padding:'16px 20px', borderTop:'1px solid #f0f0f0' }}>
+                <button onClick={()=>{signOut();setShowAccountMenu(false)}}
+                  style={{ width:'100%', background:'#fff5f5', border:'1px solid #ffe0e0', borderRadius:12, padding:'12px', fontFamily:'Geist, sans-serif', fontSize:14, fontWeight:600, color:'#e53e3e', cursor:'pointer', transition:'background 0.15s' }}
+                  onMouseEnter={e=>e.currentTarget.style.background='#ffe8e8'}
+                  onMouseLeave={e=>e.currentTarget.style.background='#fff5f5'}>
+                  Sign out
+                </button>
+              </div>
+            </div>
+          </>
         )}
 
         {/* ── Notification prompt ── */}
