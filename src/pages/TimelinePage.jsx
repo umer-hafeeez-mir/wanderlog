@@ -407,48 +407,58 @@ function AddMomentModal({ onClose, onAdd, loading, initialFiles = [] }) {
   const [location, setLocation] = useState('')
   const [coords, setCoords] = useState(null)
   const [gpsLoading, setGpsLoading] = useState(false)
-  const [files, setFiles] = useState(initialFiles)
-  const [previews, setPreviews] = useState([])
+  const [files, setFiles] = useState([])
+  const [previews, setPreviews] = useState([]) // [{ type: 'image'|'video', src: string }]
   const fileRef = useRef()
 
-  // Load previews for initialFiles (camera/gallery picks)
+  // Load initialFiles passed from camera/gallery FAB
   useEffect(() => {
-    initialFiles.forEach(file => {
+    if (!initialFiles.length) return
+    const newFiles = []
+    const newPreviews = []
+    let loaded = 0
+    initialFiles.forEach((file, i) => {
+      newFiles.push(file)
       if (file.type.startsWith('video/')) {
-        setPreviews(p => [...p, { type: 'video', src: URL.createObjectURL(file) }])
+        newPreviews[i] = { type: 'video', src: URL.createObjectURL(file) }
+        loaded++
+        if (loaded === initialFiles.length) {
+          setFiles(newFiles)
+          setPreviews(newPreviews)
+        }
       } else {
         const r = new FileReader()
-        r.onload = ev => setPreviews(p => [...p, { type: 'image', src: ev.target.result }])
+        r.onload = ev => {
+          newPreviews[i] = { type: 'image', src: ev.target.result }
+          loaded++
+          if (loaded === initialFiles.length) {
+            setFiles(newFiles)
+            setPreviews([...newPreviews])
+          }
+        }
         r.readAsDataURL(file)
       }
     })
   }, [])
 
-  function getLocation() {
-    setGpsLoading(true)
-    navigator.geolocation?.getCurrentPosition(
-      pos => {
-        setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude })
-        // Reverse geocode using free API
-        fetch(`https://nominatim.openstreetmap.org/reverse?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&format=json`)
-          .then(r => r.json())
-          .then(d => {
-            const city = d.address?.city || d.address?.town || d.address?.village || d.address?.county || ''
-            const country = d.address?.country || ''
-            if (city || country) setLocation([city, country].filter(Boolean).join(', '))
-          })
-          .catch(() => {})
-          .finally(() => setGpsLoading(false))
-      },
-      () => setGpsLoading(false)
-    )
-  }
+  // Auto-GPS on open
+  useEffect(() => {
+    navigator.geolocation?.getCurrentPosition(pos => {
+      setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude })
+      fetch(`https://nominatim.openstreetmap.org/reverse?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&format=json`)
+        .then(r => r.json())
+        .then(d => {
+          const city = d.address?.city || d.address?.town || d.address?.village || ''
+          const country = d.address?.country || ''
+          if (city || country) setLocation([city, country].filter(Boolean).join(', '))
+        }).catch(() => {})
+    }, () => {})
+  }, [])
 
-  function handleFiles(e) {
-    Array.from(e.target.files).forEach(file => {
+  function addFiles(fileList) {
+    Array.from(fileList).forEach(file => {
       setFiles(f => [...f, file])
       if (file.type.startsWith('video/')) {
-        // For video, use object URL as preview
         setPreviews(p => [...p, { type: 'video', src: URL.createObjectURL(file) }])
       } else {
         const r = new FileReader()
@@ -458,71 +468,107 @@ function AddMomentModal({ onClose, onAdd, loading, initialFiles = [] }) {
     })
   }
 
-  function removePreview(i) {
+  function removeFile(i) {
     setFiles(f => f.filter((_, idx) => idx !== i))
     setPreviews(p => p.filter((_, idx) => idx !== i))
   }
 
-  const inputStyle = {
-    width: '100%', background: 'transparent', border: 'none',
-    borderBottom: `2px solid ${C.mist}`, padding: '8px 0',
-    fontSize: 15, fontFamily: fonts.ui, color: C.ink, outline: 'none',
-    transition: 'border-color 0.2s', resize: 'none',
+  function getLocation() {
+    setGpsLoading(true)
+    navigator.geolocation?.getCurrentPosition(pos => {
+      setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude })
+      fetch(`https://nominatim.openstreetmap.org/reverse?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&format=json`)
+        .then(r => r.json())
+        .then(d => {
+          const city = d.address?.city || d.address?.town || d.address?.village || ''
+          const country = d.address?.country || ''
+          if (city || country) setLocation([city, country].filter(Boolean).join(', '))
+        }).catch(() => {}).finally(() => setGpsLoading(false))
+    }, () => setGpsLoading(false))
   }
 
+  function handlePost() {
+    onAdd({ caption: caption.trim(), location: location.trim(), latitude: coords?.lat, longitude: coords?.lng, imageFiles: files })
+  }
+
+  const fieldStyle = { width: '100%', background: 'transparent', border: 'none', borderBottom: `2px solid ${C.mist}`, padding: '8px 0', fontSize: 15, fontFamily: fonts.ui, color: C.ink, outline: 'none', resize: 'none' }
+
   return (
-    <div onClick={e => e.target === e.currentTarget && onClose()} style={{ position: 'fixed', inset: 0, background: 'rgba(13,17,23,0.6)', zIndex: 300, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-      <div style={{ background: C.parchment, borderRadius: '28px 28px 0 0', padding: '20px 20px 36px', width: '100%', maxWidth: 560, maxHeight: '85vh', overflowY: 'auto' }}>
-        <div style={{ width: 40, height: 4, background: C.mist, borderRadius: 2, margin: '-14px auto 20px' }} />
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-          <div style={{ fontFamily: fonts.display, fontSize: 22, fontStyle: 'italic', color: C.ink }}>New moment</div>
+    <div onClick={e => e.target === e.currentTarget && onClose()}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(13,17,23,0.7)', zIndex: 300, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+      <div style={{ background: C.parchment, borderRadius: '28px 28px 0 0', width: '100%', maxWidth: 560, maxHeight: '92vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+
+        {/* Handle */}
+        <div style={{ width: 40, height: 4, background: C.mist, borderRadius: 2, margin: '14px auto 12px', flexShrink: 0 }} />
+
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 20px 12px', flexShrink: 0 }}>
+          <div style={{ fontFamily: fonts.display, fontSize: 20, fontStyle: 'italic', color: C.ink }}>New moment</div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: C.dim }}>✕</button>
         </div>
 
-        <div style={{ marginBottom: 20 }}>
-          <label style={{ fontSize: 10, fontFamily: fonts.ui, fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: C.dim, display: 'block', marginBottom: 4 }}>Caption</label>
-          <textarea rows={3} value={caption} onChange={e => setCaption(e.target.value)} placeholder="What's the story?" style={{ ...inputStyle }} />
-        </div>
+        {/* Scrollable content */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '0 20px' }}>
 
-        <div style={{ marginBottom: 20 }}>
-          <label style={{ fontSize: 10, fontFamily: fonts.ui, fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: C.dim, display: 'block', marginBottom: 4 }}>Location</label>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-            <input type="text" value={location} onChange={e => setLocation(e.target.value)} placeholder="Where are you?" style={{ ...inputStyle, flex: 1 }} />
-            <button onClick={getLocation} disabled={gpsLoading} title="Use my location"
-              style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', padding: '4px', opacity: gpsLoading ? 0.4 : coords ? 1 : 0.6, color: coords ? C.rust : C.dim, flexShrink: 0 }}>
-              {gpsLoading ? '⏳' : '📍'}
-            </button>
-          </div>
-          {coords && <div style={{ fontSize: 10, fontFamily: fonts.ui, color: C.sage, marginTop: 3 }}>📍 Location captured</div>}
-        </div>
-
-        <div style={{ marginBottom: 24 }}>
-          <label style={{ fontSize: 10, fontFamily: fonts.ui, fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: C.dim, display: 'block', marginBottom: 8 }}>Photos</label>
-          <div onClick={() => fileRef.current.click()}
-            style={{ border: `2px dashed ${C.mist}`, borderRadius: 16, padding: '20px', textAlign: 'center', cursor: 'pointer', background: 'rgba(255,255,255,0.5)', transition: 'all 0.2s' }}
-            onMouseEnter={e => e.currentTarget.style.borderColor = C.amber}
-            onMouseLeave={e => e.currentTarget.style.borderColor = C.mist}>
-            <div style={{ fontSize: 32, marginBottom: 6 }}>📷</div>
-            <div style={{ fontSize: 13, fontFamily: fonts.ui, color: C.dim }}>Tap to add photos</div>
-          </div>
-          <input ref={fileRef} type="file" multiple accept="image/*,video/*" onChange={handleFiles} style={{ display: 'none' }} />
+          {/* Photo/video previews */}
           {previews.length > 0 && (
-            <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-              {previews.map((src, i) => (
-                <div key={i} style={{ position: 'relative' }}>
-                  <img src={src} alt="" style={{ width: 72, height: 72, borderRadius: 12, objectFit: 'cover', display: 'block' }} />
-                  <button onClick={() => removePreview(i)} style={{ position: 'absolute', top: -6, right: -6, background: '#e53e3e', color: '#fff', border: 'none', borderRadius: '50%', width: 18, height: 18, fontSize: 10, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>✕</button>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 16, overflowX: 'auto', scrollbarWidth: 'none' }}>
+              {previews.map((item, i) => (
+                <div key={i} style={{ position: 'relative', flexShrink: 0 }}>
+                  {item.type === 'video'
+                    ? <video src={item.src} muted playsInline style={{ width: 100, height: 100, borderRadius: 12, objectFit: 'cover', display: 'block', background: '#000' }} />
+                    : <img src={item.src} alt="" style={{ width: 100, height: 100, borderRadius: 12, objectFit: 'cover', display: 'block' }} />
+                  }
+                  {item.type === 'video' && (
+                    <div style={{ position: 'absolute', bottom: 6, left: 6, background: 'rgba(0,0,0,0.6)', borderRadius: 4, padding: '2px 5px', fontSize: 9, color: '#fff', fontFamily: fonts.ui, fontWeight: 700 }}>▶</div>
+                  )}
+                  <button onClick={() => removeFile(i)} style={{ position: 'absolute', top: -6, right: -6, background: '#e53e3e', color: '#fff', border: 'none', borderRadius: '50%', width: 20, height: 20, fontSize: 11, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>✕</button>
                 </div>
               ))}
+              {/* Add more */}
+              <label style={{ width: 100, height: 100, borderRadius: 12, border: `2px dashed ${C.mist}`, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, color: C.dim, fontSize: 24, background: 'rgba(255,255,255,0.4)' }}>
+                ＋
+                <input type="file" multiple accept="image/*,video/*" style={{ display: 'none' }} onChange={e => addFiles(e.target.files)} />
+              </label>
             </div>
           )}
+
+          {/* Caption */}
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ fontSize: 10, fontFamily: fonts.ui, fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: C.dim, display: 'block', marginBottom: 4 }}>Caption</label>
+            <textarea rows={3} value={caption} onChange={e => setCaption(e.target.value)} placeholder="What happened?" style={fieldStyle} />
+          </div>
+
+          {/* Location */}
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ fontSize: 10, fontFamily: fonts.ui, fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: C.dim, display: 'block', marginBottom: 4 }}>Location</label>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input type="text" value={location} onChange={e => setLocation(e.target.value)} placeholder="Where are you?" style={{ ...fieldStyle, flex: 1 }} />
+              <button onClick={getLocation} disabled={gpsLoading}
+                style={{ background: coords ? `${C.sage}22` : 'none', border: `1px solid ${coords ? C.sage : C.mist}`, borderRadius: 8, padding: '5px 10px', fontSize: 11, fontFamily: fonts.ui, fontWeight: 600, cursor: 'pointer', color: coords ? C.sage : C.dim, flexShrink: 0 }}>
+                {gpsLoading ? '…' : coords ? '✓ GPS' : 'Auto'}
+              </button>
+            </div>
+          </div>
+
+          {/* Upload zone — only shown when no previews */}
+          {previews.length === 0 && (
+            <div onClick={() => fileRef.current?.click()}
+              style={{ border: `2px dashed ${C.mist}`, borderRadius: 16, padding: '28px 20px', textAlign: 'center', cursor: 'pointer', background: 'rgba(255,255,255,0.4)', marginBottom: 16 }}>
+              <div style={{ fontSize: 28, marginBottom: 6 }}>📎</div>
+              <div style={{ fontSize: 13, fontFamily: fonts.ui, color: C.dim }}>Add photos or videos</div>
+            </div>
+          )}
+          <input ref={fileRef} type="file" multiple accept="image/*,video/*" style={{ display: 'none' }} onChange={e => addFiles(e.target.files)} />
         </div>
 
-        <button onClick={() => onAdd({ caption: caption.trim(), location: location.trim(), latitude: coords?.lat, longitude: coords?.lng, imageFiles: files })}
-          disabled={loading}
-          style={{ width: '100%', background: loading ? C.dim : C.night, color: '#fff', border: 'none', borderRadius: 14, padding: '15px', fontSize: 15, fontWeight: 600, fontFamily: fonts.ui, cursor: loading ? 'not-allowed' : 'pointer', letterSpacing: '0.02em', transition: 'background 0.2s' }}>
-          {loading ? 'Posting…' : 'Post moment'}
-        </button>
+        {/* Post button — fixed at bottom */}
+        <div style={{ padding: '12px 20px 36px', flexShrink: 0, borderTop: `1px solid ${C.mist}` }}>
+          <button onClick={handlePost} disabled={loading}
+            style={{ width: '100%', background: loading ? C.dim : C.night, color: loading ? 'rgba(255,255,255,0.5)' : C.amber, border: 'none', borderRadius: 14, padding: '15px', fontSize: 15, fontWeight: 700, fontFamily: fonts.ui, cursor: loading ? 'not-allowed' : 'pointer', letterSpacing: '0.01em' }}>
+            {loading ? 'Posting…' : 'Post moment'}
+          </button>
+        </div>
       </div>
     </div>
   )
