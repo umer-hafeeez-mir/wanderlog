@@ -793,6 +793,28 @@ export function TimelinePage() {
 
   useEffect(() => { loadTripCovers(trips, setTrips) }, [])
 
+  // Prefetch adjacent trip data for instant tab switching
+  useEffect(() => {
+    const allSlugs = trips.map(t => t.slug)
+    const idx = allSlugs.indexOf(activeSlug)
+    const toPreload = [allSlugs[idx - 1], allSlugs[idx + 1]].filter(Boolean)
+    toPreload.forEach(slug => {
+      const trip = trips.find(t => t.slug === slug)
+      if (!trip?.id || momentCache[trip.id]) return
+      supabase.from('moments').select(`
+        id, user_id, user_name, user_avatar, caption, location,
+        latitude, longitude, created_at,
+        moment_images (id, url, position),
+        reactions (id, user_id, emoji)
+      `).eq('trip_id', trip.id).order('created_at', { ascending: false })
+        .then(({ data }) => {
+          if (data) setMomentCache(c => ({ ...c, [trip.id]: data }))
+        })
+    })
+  }, [activeSlug])
+
+  // Cache moments per tripId so tab switching is instant
+  const [momentCache, setMomentCache] = useState({})
   const activeTrip = trips.find(t => t.slug === activeSlug)
   const { moments, loading, addMoment, refetch } = useMoments(activeTrip?.id ?? null)
 
@@ -858,16 +880,18 @@ export function TimelinePage() {
   async function handleDelete() {
     if (!deleteMoment) return
     setDeleting(true)
+    const id = deleteMoment.id
+    // Optimistic remove — instant UI feedback
+    setDeleteMoment(null)
     try {
       for (const img of deleteMoment.moment_images ?? []) {
         const path = img.url.split('/moment-images/')[1]
         if (path) await supabase.storage.from('moment-images').remove([decodeURIComponent(path)])
       }
-      await supabase.from('moments').delete().eq('id', deleteMoment.id)
-      setDeleteMoment(null)
-      await refetch()
+      await supabase.from('moments').delete().eq('id', id)
       showToast('Moment deleted')
-    } catch { showToast('Delete failed') }
+      refetch()
+    } catch { showToast('Delete failed'); refetch() }
     finally { setDeleting(false) }
   }
 
@@ -875,6 +899,14 @@ export function TimelinePage() {
 
   return (
     <div style={{ fontFamily: fonts.ui, background: C.parchment, minHeight: '100vh', color: C.ink }}>
+      <style>{`
+        * { -webkit-tap-highlight-color: transparent; }
+        button, label { -webkit-tap-highlight-color: transparent; }
+        .tab-content { animation: fadeIn 0.15s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+        img, video { will-change: transform; }
+        ::-webkit-scrollbar { display: none; }
+      `}</style>
 
       {/* ── Header ── */}
       <header style={{ position: 'sticky', top: 0, zIndex: 100, background: C.night }}>
@@ -970,6 +1002,7 @@ export function TimelinePage() {
       {/* ── Feed ── */}
       {activeSlug !== 'upcoming' && (
         <div
+          className="tab-content"
           style={{ maxWidth: 560, margin: '0 auto', padding: '0 16px 100px' }}
           onTouchStart={e => { window._swipeX = e.touches[0].clientX }}
           onTouchEnd={e => {
