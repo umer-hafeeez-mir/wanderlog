@@ -387,7 +387,6 @@ function MomentMenu({ moment, user, onDelete, onClose }) {
                 letterSpacing: '-0.01em',
                 whiteSpace: 'nowrap',
               }}>
-              <span style={{ fontSize: 15, fontWeight: 700, lineHeight: 1 }}>{item.icon}</span>
               {item.label}
             </button>
           ))}
@@ -910,14 +909,13 @@ export function TimelinePage() {
                     </div>
                     {/* Menu items */}
                     {[
-                      ...(user.email === ADMIN_EMAIL ? [{ icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>, label: 'Members', action: () => { setShowMembers(true); setShowAccountMenu(false) } }] : []),
-                      { icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>, label: 'Sign out', action: () => { signOut(); setShowAccountMenu(false) }, danger: true },
+                      ...(user.email === ADMIN_EMAIL ? [{ label: 'Members', action: () => { setShowMembers(true); setShowAccountMenu(false) } }] : []),
+                      { label: 'Sign out', action: () => { signOut(); setShowAccountMenu(false) }, danger: true },
                     ].map(item => (
                       <button key={item.label} onClick={item.action}
-                        style={{ width: '100%', background: 'none', border: 'none', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', color: item.danger ? '#ff6b6b' : 'rgba(255,255,255,0.75)', fontFamily: fonts.ui, fontSize: 13, textAlign: 'left', transition: 'background 0.1s' }}
+                        style={{ width: '100%', background: 'none', border: 'none', padding: '12px 16px', display: 'flex', alignItems: 'center', cursor: 'pointer', color: item.danger ? '#ff6b6b' : 'rgba(255,255,255,0.75)', fontFamily: fonts.ui, fontSize: 13, textAlign: 'left', transition: 'background 0.1s' }}
                         onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
                         onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-                        {item.icon}
                         {item.label}
                       </button>
                     ))}
@@ -927,8 +925,7 @@ export function TimelinePage() {
             </div>
           ) : (
             <button onClick={signInWithGoogle}
-              style={{ background: C.amber, color: C.night, border: 'none', borderRadius: 10, padding: '8px 18px', fontSize: 13, fontFamily: fonts.ui, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+              style={{ background: C.amber, color: C.night, border: 'none', borderRadius: 10, padding: '8px 18px', fontSize: 13, fontFamily: fonts.ui, fontWeight: 700, cursor: 'pointer' }}>
               Sign in
             </button>
           )}
@@ -1022,7 +1019,7 @@ export function TimelinePage() {
           {activeSlug !== 'today' && visibleMoments.length > 0 && (
             <div style={{ display: 'flex', gap: 8, padding: '12px 0', overflowX: 'auto', scrollbarWidth: 'none' }}>
               {[
-                { label: '📄 Trip book', action: () => setShowTripBook(true) },
+                { label: 'Trip book', action: () => setShowTripBook(true) },
               ].map(btn => (
                 <button key={btn.label} onClick={btn.action}
                   style={{ background: C.night, border: `1.5px solid rgba(232,168,56,0.3)`, borderRadius: 100, padding: '7px 16px', fontSize: 12, fontFamily: fonts.ui, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', color: C.amber, flexShrink: 0 }}>
@@ -1056,10 +1053,13 @@ export function TimelinePage() {
                     <div style={{ fontSize: 8, fontFamily: fonts.ui, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', opacity: 0.7, marginTop: 2 }}>{day.split(' ')[0]}</div>
                   </div>
                   <div style={{ flex: 1, height: 1, background: C.mist }} />
-                  <button onClick={() => setRecapDay(day)}
-                    style={{ fontSize: 11, fontFamily: fonts.ui, color: C.amber, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, padding: '2px 0', whiteSpace: 'nowrap', opacity: 0.8 }}>
-                    {grouped[day].length} moment{grouped[day].length !== 1 ? 's' : ''} · Recap ↗
-                  </button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ fontSize: 11, fontFamily: fonts.ui, color: C.dim }}>{grouped[day].length} moment{grouped[day].length !== 1 ? 's' : ''}</div>
+                    <button onClick={() => setRecapDay(day)}
+                      style={{ background: C.night, color: C.amber, border: '1.5px solid rgba(232,168,56,0.3)', borderRadius: 100, padding: '3px 12px', fontSize: 11, fontFamily: fonts.ui, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                      Recap
+                    </button>
+                  </div>
                 </div>
                 {grouped[day].map(m => (
                   <MomentCard key={m.id} moment={m} user={user} onReact={handleReact} onMenuOpen={setMenuMoment} />
