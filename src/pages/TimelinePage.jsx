@@ -568,10 +568,10 @@ export function TimelinePage() {
           <div style={{ display:'flex', overflowX:'auto', scrollbarWidth:'none', padding:'0 16px 10px', gap:8 }}>
             {allTabs.map((tab, idx) => {
               const isActive = activeSlug === tab.slug
-              const color = tab.slug === 'today' ? '#111' : tab.slug === 'upcoming' ? '#888' : dayColor(idx)
+              const color = tab.slug === 'today' ? '#FF6B6B' : tab.slug === 'upcoming' ? '#8395A7' : dayColor(idx + 1)
               return (
                 <button key={tab.slug} onClick={()=>setActiveSlug(tab.slug)}
-                  style={{ background:isActive?color:'transparent', color:isActive?'#fff':color, border:`2px solid ${isActive?color:color}`, borderRadius:100, padding:'6px 16px', fontSize:13, fontFamily:'Geist, sans-serif', fontWeight:700, cursor:'pointer', whiteSpace:'nowrap', flexShrink:0, transition:'all 0.15s', boxShadow:isActive?`0 2px 12px ${color}44`:'none' }}>
+                  style={{ background:isActive?color:`${color}20`, color:isActive?'#fff':color, border:`2px solid ${color}`, borderRadius:100, padding:'6px 16px', fontSize:13, fontFamily:'Geist, sans-serif', fontWeight:700, cursor:'pointer', whiteSpace:'nowrap', flexShrink:0, transition:'all 0.15s', boxShadow:isActive?`0 3px 14px ${color}55`:'none' }}>
                   {tab.emoji} {tab.label}
                 </button>
               )
