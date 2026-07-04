@@ -219,24 +219,50 @@ function UploadModal({ user, onClose, onUploaded }) {
 
 function DocViewer({ doc, onClose }) {
   const url = doc.signedUrl
+  const [zoom, setZoom] = useState(1)
+
   return (
-    <div onClick={onClose} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.92)', zIndex:700, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center' }}>
-      <div style={{ position:'absolute', top:16, right:16, display:'flex', gap:10 }}>
-        <a href={url} download target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()}
-          style={{ background:'rgba(255,255,255,0.15)', color:'#fff', border:'none', borderRadius:100, padding:'8px 16px', fontSize:13, fontFamily:'Geist, sans-serif', fontWeight:600, cursor:'pointer', textDecoration:'none' }}>
-          Download
-        </a>
-        <button onClick={onClose} style={{ background:'rgba(255,255,255,0.15)', border:'none', color:'#fff', width:36, height:36, borderRadius:'50%', fontSize:16, cursor:'pointer' }}>✕</button>
-      </div>
-      <div style={{ position:'absolute', top:16, left:16, color:'rgba(255,255,255,0.7)', fontFamily:'Geist, sans-serif', fontSize:13 }}>
-        {docIcon(doc.doc_type)} {doc.label || docLabel(doc.doc_type)} · {doc.person_name}
-      </div>
-      {doc.file_type === 'image'
-        ? <img onClick={e=>e.stopPropagation()} src={url} alt="" style={{ maxWidth:'92vw', maxHeight:'85vh', objectFit:'contain', borderRadius:8 }} />
-        : <div onClick={e=>e.stopPropagation()} style={{ background:'#fff', borderRadius:12, overflow:'hidden', width:'92vw', maxWidth:600, height:'80vh' }}>
-            <iframe src={url} style={{ width:'100%', height:'100%', border:'none' }} title="Document" />
+    <div style={{ position:'fixed', inset:0, background:'#000', zIndex:700, display:'flex', flexDirection:'column' }}>
+      {/* Top bar */}
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 16px', background:'rgba(0,0,0,0.8)', flexShrink:0, zIndex:10 }}>
+        <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ fontSize:13, fontFamily:'Geist, sans-serif', fontWeight:600, color:'#fff', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+            {docIcon(doc.doc_type)} {doc.label || docLabel(doc.doc_type)}
           </div>
-      }
+          <div style={{ fontSize:11, color:'rgba(255,255,255,0.5)', fontFamily:'Geist, sans-serif', marginTop:1 }}>{doc.person_name}</div>
+        </div>
+        <div style={{ display:'flex', gap:8, flexShrink:0, marginLeft:12 }}>
+          <a href={url} download target="_blank" rel="noreferrer"
+            style={{ background:'rgba(255,255,255,0.12)', color:'#fff', border:'none', borderRadius:100, padding:'7px 14px', fontSize:12, fontFamily:'Geist, sans-serif', fontWeight:600, cursor:'pointer', textDecoration:'none', whiteSpace:'nowrap' }}>
+            Download
+          </a>
+          <button onClick={onClose} style={{ background:'rgba(255,255,255,0.12)', border:'none', color:'#fff', width:34, height:34, borderRadius:'50%', fontSize:16, cursor:'pointer', flexShrink:0 }}>✕</button>
+        </div>
+      </div>
+
+      {/* Content — full remaining height */}
+      <div style={{ flex:1, overflow:'auto', display:'flex', alignItems:'center', justifyContent:'center', padding: doc.file_type === 'image' ? '8px' : 0 }}>
+        {doc.file_type === 'image' ? (
+          <img
+            src={url} alt=""
+            style={{ maxWidth:'100%', maxHeight:'100%', objectFit:'contain', borderRadius:4, transform:`scale(${zoom})`, transformOrigin:'center', transition:'transform 0.2s' }}
+            onDoubleClick={() => setZoom(z => z === 1 ? 2 : 1)}
+          />
+        ) : (
+          <iframe
+            src={url}
+            style={{ width:'100%', height:'100%', border:'none', display:'block' }}
+            title="Document"
+          />
+        )}
+      </div>
+
+      {/* Bottom hint for images */}
+      {doc.file_type === 'image' && (
+        <div style={{ textAlign:'center', padding:'8px', background:'rgba(0,0,0,0.6)', fontSize:11, color:'rgba(255,255,255,0.35)', fontFamily:'Geist, sans-serif', flexShrink:0 }}>
+          Double-tap to zoom
+        </div>
+      )}
     </div>
   )
 }
