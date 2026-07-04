@@ -987,28 +987,20 @@ export function TimelinePage() {
 
       {/* ── FAB — camera + gallery ── */}
       {user && activeSlug !== 'upcoming' && (
-        <div style={{ position: 'fixed', bottom: 28, right: 20, zIndex: 200, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 10 }}>
-          {/* Gallery button — small */}
-          <label style={{ background: C.parchment, color: C.ink, border: `2px solid ${C.night}`, borderRadius: 100, padding: '8px 16px', fontSize: 12, fontFamily: fonts.ui, fontWeight: 700, cursor: 'pointer', boxShadow: '0 2px 12px rgba(0,0,0,0.15)', display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
-            🖼️ Gallery
+        <div style={{ position: 'fixed', bottom: 32, right: 24, zIndex: 200, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+          <label title="Gallery" style={{ width: 42, height: 42, borderRadius: '50%', background: C.night, border: `1.5px solid rgba(232,168,56,0.4)`, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 2px 16px rgba(0,0,0,0.25)' }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.amber} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5" fill={C.amber} stroke="none"/><polyline points="21 15 16 10 5 21"/>
+            </svg>
             <input type="file" multiple accept="image/*,video/*" style={{ display: 'none' }}
-              onChange={e => {
-                const picked = Array.from(e.target.files)
-                if (!picked.length) return
-                setGalleryFiles(picked)
-                setShowAddMoment(true)
-              }} />
+              onChange={e => { const picked = Array.from(e.target.files); if (!picked.length) return; setGalleryFiles(picked); setShowAddMoment(true) }} />
           </label>
-          {/* Camera button — main FAB */}
-          <label style={{ background: C.night, color: C.amber, border: `2px solid ${C.amber}`, borderRadius: '50%', width: 58, height: 58, fontSize: 26, cursor: 'pointer', boxShadow: `0 4px 20px rgba(0,0,0,0.3), 0 0 0 4px ${C.parchment}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            📷
+          <label title="Camera" style={{ width: 62, height: 62, borderRadius: '50%', background: C.night, border: `2px solid ${C.amber}`, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: `0 4px 28px rgba(0,0,0,0.4), 0 0 0 5px ${C.parchment}` }}>
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke={C.amber} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>
+            </svg>
             <input type="file" accept="image/*,video/*" capture="environment" style={{ display: 'none' }}
-              onChange={e => {
-                const picked = Array.from(e.target.files)
-                if (!picked.length) return
-                setGalleryFiles(picked)
-                setShowAddMoment(true)
-              }} />
+              onChange={e => { const picked = Array.from(e.target.files); if (!picked.length) return; setGalleryFiles(picked); setShowAddMoment(true) }} />
           </label>
         </div>
       )}
