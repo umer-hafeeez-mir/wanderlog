@@ -473,7 +473,7 @@ function JoinBanner({ joinState, onClose }) {
 }
 
 // ── Privacy Toggle ───────────────────────────────────────────
-function PrivacyToggle({ tripId, isPrivate, onToggle }) {
+function PrivacyToggle({ tripId, isPrivate, onToggle, dark=false }) {
   const [loading, setLoading] = useState(false)
   async function toggle() {
     setLoading(true)
@@ -482,16 +482,18 @@ function PrivacyToggle({ tripId, isPrivate, onToggle }) {
     onToggle(newVal)
     setLoading(false)
   }
+  const textColor = dark ? 'rgba(255,255,255,0.8)' : '#666'
+  const trackBg = isPrivate ? (dark ? 'rgba(255,255,255,0.3)' : '#ddd') : (dark ? 'rgba(255,255,255,0.5)' : '#ccc')
+  const thumbBg = dark ? '#fff' : '#fff'
+  const trackBorder = dark ? '1px solid rgba(255,255,255,0.3)' : '1px solid #ccc'
   return (
     <button onClick={toggle} disabled={loading}
-      style={{ background:'none', border:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:8, opacity:loading?0.5:1, padding:0 }}>
-      <span style={{ fontSize:11, fontFamily:'Geist, sans-serif', fontWeight:600, color:'rgba(255,255,255,0.7)', letterSpacing:'0.04em' }}>
+      style={{ background:'none', border:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:7, opacity:loading?0.5:1, padding:0 }}>
+      <span style={{ fontSize:11, fontFamily:'Geist, sans-serif', fontWeight:600, color:textColor, letterSpacing:'0.04em' }}>
         {isPrivate ? 'Private' : 'Public'}
       </span>
-      {/* Toggle track */}
-      <div style={{ width:36, height:20, borderRadius:100, background:isPrivate?'rgba(255,255,255,0.25)':'rgba(255,255,255,0.5)', position:'relative', transition:'background 0.2s', border:'1px solid rgba(255,255,255,0.3)' }}>
-        {/* Toggle thumb */}
-        <div style={{ position:'absolute', top:2, left:isPrivate?16:2, width:14, height:14, borderRadius:'50%', background:'#fff', transition:'left 0.2s', boxShadow:'0 1px 4px rgba(0,0,0,0.2)' }} />
+      <div style={{ width:36, height:20, borderRadius:100, background:trackBg, position:'relative', transition:'background 0.2s', border:trackBorder, flexShrink:0 }}>
+        <div style={{ position:'absolute', top:2, left:isPrivate?16:2, width:14, height:14, borderRadius:'50%', background:thumbBg, transition:'left 0.2s', boxShadow:'0 1px 4px rgba(0,0,0,0.25)' }} />
       </div>
     </button>
   )
@@ -689,7 +691,7 @@ export function TimelinePage() {
                   </div>
                   {user && (
                     <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-                      <PrivacyToggle tripId={activeTrip.id} isPrivate={activeTrip.isPrivate} onToggle={priv=>setTrips(ts=>ts.map(t=>t.id===activeTrip.id?{...t,isPrivate:priv}:t))} />
+                      <PrivacyToggle tripId={activeTrip.id} isPrivate={activeTrip.isPrivate} onToggle={priv=>setTrips(ts=>ts.map(t=>t.id===activeTrip.id?{...t,isPrivate:priv}:t))} dark={true} />
                       <label style={{ background:'rgba(255,255,255,0.15)', border:'1px solid rgba(255,255,255,0.25)', borderRadius:8, padding:'6px 12px', fontSize:11, fontFamily:'Geist, sans-serif', color:'#fff', cursor:'pointer', backdropFilter:'blur(8px)' }}>Change cover<input type="file" accept="image/*" style={{ display:'none' }} onChange={e=>handleCoverUpload(e,activeSlug)} /></label>
                     </div>
                   )}
