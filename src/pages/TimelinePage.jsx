@@ -816,7 +816,7 @@ export function TimelinePage() {
   // Cache moments per tripId so tab switching is instant
   const [momentCache, setMomentCache] = useState({})
   const activeTrip = trips.find(t => t.slug === activeSlug)
-  const { moments, loading, addMoment, refetch } = useMoments(activeTrip?.id ?? null)
+  const { moments, loading, addMoment, toggleReaction, refetch, setMoments } = useMoments(activeTrip?.id ?? null)
 
   const visibleMoments = useMemo(() => {
     if (activeSlug !== 'today') return moments
@@ -833,13 +833,9 @@ export function TimelinePage() {
 
   const days = Object.keys(grouped)
 
-  async function handleReact(momentId, emoji) {
+  function handleReact(momentId, emoji) {
     if (!user) return
-    const m = moments.find(x => x.id === momentId)
-    const existing = m?.reactions?.find(r => r.user_id === user.id && r.emoji === emoji)
-    if (existing) await supabase.from('reactions').delete().eq('id', existing.id)
-    else await supabase.from('reactions').insert({ moment_id: momentId, user_id: user.id, emoji })
-    await refetch()
+    toggleReaction(momentId, user.id, emoji)
   }
 
   async function handleAddMoment(payload) {
@@ -880,18 +876,21 @@ export function TimelinePage() {
   async function handleDelete() {
     if (!deleteMoment) return
     setDeleting(true)
-    const id = deleteMoment.id
-    // Optimistic remove — instant UI feedback
+    const toDelete = deleteMoment
+    // Optimistic remove — instant
     setDeleteMoment(null)
+    setMoments(ms => ms.filter(m => m.id !== toDelete.id))
     try {
-      for (const img of deleteMoment.moment_images ?? []) {
+      for (const img of toDelete.moment_images ?? []) {
         const path = img.url.split('/moment-images/')[1]
         if (path) await supabase.storage.from('moment-images').remove([decodeURIComponent(path)])
       }
-      await supabase.from('moments').delete().eq('id', id)
+      await supabase.from('moments').delete().eq('id', toDelete.id)
       showToast('Moment deleted')
-      refetch()
-    } catch { showToast('Delete failed'); refetch() }
+    } catch {
+      showToast('Delete failed')
+      refetch() // Only refetch on error to restore state
+    }
     finally { setDeleting(false) }
   }
 
