@@ -905,10 +905,9 @@ export function TimelinePage() {
   const allTabs = [...trips, UPCOMING_TAB]
 
   return (
-    <div style={{ fontFamily: fonts.ui, minHeight: '100vh', color: C.ink, background: C.parchment, position: 'relative', overflow: 'hidden' }}>
+    <div style={{ fontFamily: fonts.ui, minHeight: '100vh', color: C.ink, position: 'relative' }}>
       {/* Animated mesh background */}
-      <div style={{ position: 'fixed', inset: 0, zIndex: 0, background: 'linear-gradient(135deg, #f5f0e8 0%, #fce4e4 25%, #e8f4f8 50%, #f0e8f5 75%, #f5f0e8 100%)', backgroundSize: '400% 400%', animation: 'meshMove 18s ease infinite' }} />
-      <div style={{ position: 'relative', zIndex: 1 }}>
+      <div style={{ position: 'fixed', inset: 0, zIndex: 0, background: 'linear-gradient(135deg, #f5f0e8 0%, #fce4e4 25%, #e8f4f8 50%, #f0e8f5 75%, #f5f0e8 100%)', backgroundSize: '400% 400%', animation: 'meshMove 18s ease infinite', pointerEvents: 'none' }} />
       <style>{`
         * { -webkit-tap-highlight-color: transparent; }
         button, label { -webkit-tap-highlight-color: transparent; }
@@ -1196,7 +1195,6 @@ export function TimelinePage() {
           {toast}
         </div>
       )}
-      </div>
     </div>
   )
 }
