@@ -28,6 +28,7 @@ export function useMoments(tripId) {
   useEffect(() => { fetchMoments() }, [fetchMoments])
 
   async function addMoment({ caption, location, latitude, longitude, imageFiles, userId, userName, userAvatar }) {
+    // 1. Insert moment row immediately
     const { data: moment, error: momentErr } = await supabase
       .from('moments')
       .insert({ trip_id: tripId, user_id: userId, user_name: userName, user_avatar: userAvatar, caption, location, latitude, longitude })
@@ -36,12 +37,26 @@ export function useMoments(tripId) {
 
     if (momentErr) throw new Error(momentErr.message)
 
-    // Optimistic insert — show moment immediately while images upload
-    const optimistic = { ...moment, moment_images: [], reactions: [] }
-    setMoments(ms => [optimistic, ...ms])
+    // 2. Show moment instantly with local image previews (base64) — no waiting for upload
+    const localImages = await Promise.all(
+      (imageFiles ?? []).map((file, i) => new Promise(resolve => {
+        if (file.type.startsWith('video/')) {
+          resolve({ id: `local-${i}`, url: URL.createObjectURL(file), position: i })
+        } else {
+          const r = new FileReader()
+          r.onload = ev => resolve({ id: `local-${i}`, url: ev.target.result, position: i })
+          r.readAsDataURL(file)
+        }
+      }))
+    )
 
-    const imageUrls = await Promise.all(
-      imageFiles.map(async (file, i) => {
+    // Add to top of feed immediately with local preview
+    const optimistic = { ...moment, moment_images: localImages, reactions: [] }
+    setMoments(ms => [optimistic, ...ms.filter(m => m.id !== moment.id)])
+
+    // 3. Upload images in background — parallel
+    if (imageFiles?.length > 0) {
+      const uploadPromises = imageFiles.map(async (file, i) => {
         const ext = file.name.split('.').pop() || (file.type.startsWith('video/') ? 'mp4' : 'jpg')
         const path = `${tripId}/${moment.id}/${i}.${ext}`
         const { error: uploadErr } = await supabase.storage
@@ -51,18 +66,28 @@ export function useMoments(tripId) {
         const { data: { publicUrl } } = supabase.storage.from('moment-images').getPublicUrl(path)
         return { momentId: moment.id, url: publicUrl, position: i }
       })
-    )
 
-    if (imageUrls.length > 0) {
-      await supabase.from('moment_images').insert(
-        imageUrls.map(({ momentId, url, position }) => ({ moment_id: momentId, url, position }))
-      )
+      try {
+        const imageUrls = await Promise.all(uploadPromises)
+        if (imageUrls.length > 0) {
+          await supabase.from('moment_images').insert(
+            imageUrls.map(({ momentId, url, position }) => ({ moment_id: momentId, url, position }))
+          )
+          // Replace local previews with real URLs silently
+          setMoments(ms => ms.map(m =>
+            m.id === moment.id
+              ? { ...m, moment_images: imageUrls.map(({ url, position }) => ({ id: `${moment.id}-${position}`, url, position })) }
+              : m
+          ))
+        }
+      } catch(e) {
+        console.error('Image upload failed:', e)
+        // Keep local preview, try to refetch
+        fetchMoments()
+      }
     }
 
-    // Final sync to get real image URLs into state
-    fetchMoments()
-
-    // Trigger push notifications to family members
+    // Notify family
     supabase.functions.invoke('send-push-notification', {
       body: { tripId, posterName: userName, tripName: '', momentId: moment.id }
     }).catch(() => {})
@@ -71,20 +96,22 @@ export function useMoments(tripId) {
   }
 
   async function toggleReaction(momentId, userId, emoji) {
-    const existing = moments.find(m => m.id === momentId)?.reactions?.find(r => r.user_id === userId && r.emoji === emoji)
+    const existing = moments
+      .find(m => m.id === momentId)
+      ?.reactions?.find(r => r.user_id === userId && r.emoji === emoji)
 
-    // Optimistic update — update local state immediately
+    // Optimistic update — instant
     setMoments(ms => ms.map(m => {
       if (m.id !== momentId) return m
       const reactions = m.reactions ?? []
       if (existing) {
         return { ...m, reactions: reactions.filter(r => r.id !== existing.id) }
       } else {
-        return { ...m, reactions: [...reactions, { id: 'temp-' + Date.now(), moment_id: momentId, user_id: userId, emoji }] }
+        return { ...m, reactions: [...reactions, { id: `temp-${Date.now()}`, moment_id: momentId, user_id: userId, emoji }] }
       }
     }))
 
-    // Sync with DB in background
+    // Sync to DB quietly
     if (existing) await supabase.from('reactions').delete().eq('id', existing.id)
     else await supabase.from('reactions').insert({ moment_id: momentId, user_id: userId, emoji })
   }
