@@ -4,6 +4,8 @@ import { supabase } from '../lib/supabase'
 import { useMoments } from '../hooks/useMoments'
 import { useAuth } from '../hooks/useAuth'
 import { DayRecap } from '../components/DayRecap'
+import { WelcomePage } from './WelcomePage'
+import { useOfflineQueue } from '../hooks/useOfflineQueue'
 import { TravelDocs } from '../components/TravelDocs'
 import { TripBook } from '../components/TripBook'
 
@@ -536,6 +538,7 @@ export function TimelinePage() {
 
   const activeTrip = trips.find(t => t.slug === activeSlug)
   const { moments, loading, addMoment, toggleReaction, refetch, setMoments } = useMoments(activeTrip?.id ?? null)
+  const { isOnline, pendingCount, syncing, queueOrPost } = useOfflineQueue(addMoment)
 
   const visibleMoments = useMemo(() => {
     if (activeSlug !== 'today') return moments
@@ -558,7 +561,12 @@ export function TimelinePage() {
   async function handleAddMoment(payload) {
     if (!user) return
     setPosting(true)
-    try { await addMoment({ ...payload, userId:user.id, userName:user.user_metadata?.full_name??user.email, userAvatar:user.user_metadata?.avatar_url??null }); setShowAddMoment(false); setGalleryFiles([]); showToast('Moment posted ✨') }
+    try {
+      const result = await queueOrPost({ ...payload, userId:user.id, userName:user.user_metadata?.full_name??user.email, userAvatar:user.user_metadata?.avatar_url??null })
+      setShowAddMoment(false)
+      setGalleryFiles([])
+      showToast(result ? 'Moment posted ✨' : 'Saved offline — will sync when connected 📶')
+    }
     catch(e) { showToast('Error: '+e.message) }
     finally { setPosting(false) }
   }
@@ -600,6 +608,11 @@ export function TimelinePage() {
   }
 
   const allTabs = [...trips, UPCOMING_TAB]
+
+  // Show welcome page when signed out
+  if (!user && !loading) {
+    return <WelcomePage onSignIn={signInWithGoogle} loading={false} />
+  }
 
   return (
     <div style={{ fontFamily:'Geist, Inter, sans-serif', minHeight:'100vh', color:'#111' }}>
@@ -660,6 +673,25 @@ export function TimelinePage() {
             {user && <button onClick={()=>setShowAddTrip(true)} style={{ background:'transparent', border:'2px dashed #ddd', borderRadius:100, padding:'6px 14px', fontSize:13, color:'#aaa', cursor:'pointer', flexShrink:0, fontFamily:'Geist, sans-serif', fontWeight:600 }}>＋ Trip</button>}
           </div>
         </header>
+
+        {/* ── Offline banner ── */}
+        {!isOnline && (
+          <div style={{ background:'#1a1a1a', color:'#fff', padding:'8px 16px', fontSize:12, fontFamily:'Geist, sans-serif', textAlign:'center', display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+            <span style={{ width:7, height:7, borderRadius:'50%', background:'#FF6B6B', display:'inline-block', flexShrink:0 }} />
+            You're offline — moments will sync when connected
+            {pendingCount > 0 && <span style={{ background:'rgba(255,255,255,0.15)', borderRadius:100, padding:'1px 8px', fontSize:11 }}>{pendingCount} pending</span>}
+          </div>
+        )}
+        {isOnline && syncing && (
+          <div style={{ background:'#1DD1A1', color:'#fff', padding:'7px 16px', fontSize:12, fontFamily:'Geist, sans-serif', textAlign:'center' }}>
+            ↑ Syncing offline moments…
+          </div>
+        )}
+        {isOnline && !syncing && pendingCount > 0 && (
+          <div style={{ background:'#54A0FF', color:'#fff', padding:'7px 16px', fontSize:12, fontFamily:'Geist, sans-serif', textAlign:'center' }}>
+            ✓ {pendingCount} moment{pendingCount>1?'s':''} synced!
+          </div>
+        )}
 
         {/* ── Upcoming ── */}
         {activeSlug === 'upcoming' && (
@@ -748,8 +780,8 @@ export function TimelinePage() {
               <div style={{ textAlign:'center', padding:'60px 20px' }}>
                 <div style={{ fontSize:44, marginBottom:12 }}>{activeTrip?.emoji??'✈️'}</div>
                 <div style={{ fontFamily:'Cormorant Garamond, serif', fontStyle:'italic', fontSize:22, marginBottom:6 }}>{activeSlug==='today'?'Nothing yet today':'No moments yet'}</div>
-                <div style={{ fontSize:13, color:'#aaa', fontFamily:'Geist, sans-serif' }}>{user?'Tap the camera to post your first moment':'Sign in to start posting'}</div>
-                {!user && <button onClick={signInWithGoogle} style={{ marginTop:16, background:'#111', color:'#fff', border:'none', borderRadius:12, padding:'11px 28px', fontSize:14, fontFamily:'Geist, sans-serif', fontWeight:600, cursor:'pointer' }}>Sign in with Google</button>}
+                <div style={{ fontSize:13, color:'#aaa', fontFamily:'Geist, sans-serif' }}>Tap the camera to post your first moment</div>
+
               </div>
             ) : (
               visibleDays.map((day, idx) => {
