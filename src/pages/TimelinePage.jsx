@@ -20,22 +20,26 @@ function useJoinRequest(trips, user, showToast) {
       const { data: trip } = await supabase.from('trips').select('id, name, invite_token').eq('invite_token', token).single()
       if (!trip) { showToast('Invalid invite link'); return }
 
-      // Check if already a member
+      // Check if already a member of any trip
       const { data: existing } = await supabase.from('trip_members').select('status').eq('trip_id', trip.id).eq('user_id', user.id).single()
       if (existing) {
         setJoinState({ trip, status: existing.status })
         return
       }
 
-      // Insert pending request
-      await supabase.from('trip_members').insert({
-        trip_id: trip.id,
-        user_id: user.id,
-        user_name: user.user_metadata?.full_name ?? user.email,
-        user_avatar: user.user_metadata?.avatar_url ?? null,
-        user_email: user.email,
-        status: 'pending'
-      })
+      // Insert pending request for ALL trips (so they can post everywhere once approved)
+      const allTripIds = ['6e7696ea-b754-49a3-ac42-213bc48f459e', 'd93cebae-a4c1-4f71-842c-88410af4450a', 'ff91d8b7-516c-4a87-9bdf-5bac2b398f93']
+      await supabase.from('trip_members').upsert(
+        allTripIds.map(tripId => ({
+          trip_id: tripId,
+          user_id: user.id,
+          user_name: user.user_metadata?.full_name ?? user.email,
+          user_avatar: user.user_metadata?.avatar_url ?? null,
+          user_email: user.email,
+          status: 'pending'
+        })),
+        { onConflict: 'trip_id,user_id' }
+      )
 
       // Notify admin — email first, WhatsApp fallback
       try {
@@ -512,6 +516,7 @@ function MembersPanel({ trips, user, onClose }) {
   const [members, setMembers] = useState([])
   const [selectedTrip, setSelectedTrip] = useState(trips.filter(t => !t.fixed)[0]?.id ?? null)
   const [loading, setLoading] = useState(false)
+  const [copyMsg, setCopyMsg] = useState('')
 
   useEffect(() => {
     if (!selectedTrip) return
@@ -520,15 +525,29 @@ function MembersPanel({ trips, user, onClose }) {
 
   async function updateStatus(memberId, status) {
     setLoading(true)
-    await supabase.from('trip_members').update({ status }).eq('id', memberId)
-    setMembers(ms => ms.map(m => m.id === memberId ? { ...m, status } : m))
+    // Get the user_id for this member
+    const member = members.find(m => m.id === memberId)
+    if (member) {
+      // Update status across ALL trips for this user
+      await supabase.from('trip_members').update({ status }).eq('user_id', member.user_id)
+      setMembers(ms => ms.map(m => m.user_id === member.user_id ? { ...m, status } : m))
+    }
     setLoading(false)
   }
 
   async function copyInviteLink(tripId) {
     const { data } = await supabase.from('trips').select('invite_token').eq('id', tripId).single()
     if (data?.invite_token) {
-      navigator.clipboard?.writeText(`${window.location.origin}?join=${data.invite_token}`)
+      const link = `${window.location.origin}?join=${data.invite_token}`
+      try {
+        await navigator.clipboard.writeText(link)
+        setCopyMsg('Link copied! Share it on WhatsApp 🔗')
+      } catch {
+        // Fallback for mobile browsers that block clipboard
+        setCopyMsg(link)
+      }
+    } else {
+      setCopyMsg('No invite token found — try again')
     }
   }
 
@@ -565,6 +584,11 @@ function MembersPanel({ trips, user, onClose }) {
                 style={{ background: '#b85c3a', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
                 Copy 🔗
               </button>
+            </div>
+            {copyMsg && (
+              <div style={{ marginTop: 8, fontSize: 12, color: copyMsg.startsWith('http') ? '#1a1612' : '#22a06b', background: '#f0faf5', borderRadius: 8, padding: '8px 12px', wordBreak: 'break-all' }}>
+                {copyMsg}
+              </div>
             </div>
 
             {/* Pending requests */}
@@ -635,7 +659,7 @@ function JoinBanner({ joinState, onClose }) {
   if (!joinState) return null
   const msgs = {
     pending:  { icon: '⏳', title: 'Request sent!', sub: `Your request to join "${joinState.trip.name}" has been sent. You'll be able to post once the admin approves you.` },
-    approved: { icon: '✅', title: "You're in!", sub: `You can now post to "${joinState.trip.name}".` },
+    approved: { icon: '✅', title: 'You're in!',   sub: `You can now post to "${joinState.trip.name}".` },
     rejected: { icon: '❌', title: 'Not approved',  sub: `Your request to join "${joinState.trip.name}" was not approved.` },
   }
   const msg = msgs[joinState.status] ?? msgs.pending
