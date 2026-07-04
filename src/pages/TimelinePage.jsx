@@ -4,6 +4,72 @@ import { supabase } from '../lib/supabase'
 import { useMoments } from '../hooks/useMoments'
 import { useAuth } from '../hooks/useAuth'
 
+const ADMIN_EMAIL = 'umemir@gmail.com'
+
+// Check URL for invite token on load
+function useJoinRequest(trips, user, showToast) {
+  const [joinState, setJoinState] = useState(null) // { trip, status }
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const token = params.get('join')
+    if (!token || !user) return
+
+    async function handleJoin() {
+      // Find trip by invite token
+      const { data: trip } = await supabase.from('trips').select('id, name, invite_token').eq('invite_token', token).single()
+      if (!trip) { showToast('Invalid invite link'); return }
+
+      // Check if already a member
+      const { data: existing } = await supabase.from('trip_members').select('status').eq('trip_id', trip.id).eq('user_id', user.id).single()
+      if (existing) {
+        setJoinState({ trip, status: existing.status })
+        return
+      }
+
+      // Insert pending request
+      await supabase.from('trip_members').insert({
+        trip_id: trip.id,
+        user_id: user.id,
+        user_name: user.user_metadata?.full_name ?? user.email,
+        user_avatar: user.user_metadata?.avatar_url ?? null,
+        user_email: user.email,
+        status: 'pending'
+      })
+
+      // Notify admin — email first, WhatsApp fallback
+      try {
+        const { data: notifData } = await supabase.functions.invoke('notify-join-request', {
+          body: {
+            tripName: trip.name,
+            requesterName: user.user_metadata?.full_name ?? user.email,
+            requesterEmail: user.email,
+            adminEmail: ADMIN_EMAIL,
+          }
+        })
+        // If email failed, open WhatsApp directly to admin
+        if (notifData && !notifData.emailOk && notifData.whatsappUrl) {
+          const waText = encodeURIComponent(
+            `📸 Wanderlog: ${user.user_metadata?.full_name ?? user.email} (${user.email}) wants to join your *${trip.name}* trip. Open the app to approve: https://wanderlog-one.vercel.app`
+          )
+          window.open(`https://wa.me/${ADMIN_WHATSAPP}?text=${waText}`, '_blank')
+        }
+      } catch {
+        // Edge function not deployed yet — silent fail
+      }
+
+      setJoinState({ trip, status: 'pending' })
+
+      // Clean up URL
+      window.history.replaceState({}, '', '/')
+    }
+
+    handleJoin()
+  }, [user, trips])
+
+  return joinState
+}
+
 const DEFAULT_TRIPS = [
   { id: '6e7696ea-b754-49a3-ac42-213bc48f459e', slug: 'today',  label: 'Today',        emoji: '📍', fixed: true },
   { id: 'd93cebae-a4c1-4f71-842c-88410af4450a', slug: 'turkey', label: 'Turkey',       emoji: '🇹🇷' },
@@ -441,6 +507,150 @@ function DeleteConfirmModal({ onClose, onConfirm, loading }) {
   )
 }
 
+// ── Members Panel ─────────────────────────────────────────────
+function MembersPanel({ trips, user, onClose }) {
+  const [members, setMembers] = useState([])
+  const [selectedTrip, setSelectedTrip] = useState(trips.filter(t => !t.fixed)[0]?.id ?? null)
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (!selectedTrip) return
+    supabase.from('trip_members').select('*').eq('trip_id', selectedTrip).order('requested_at').then(({ data }) => setMembers(data ?? []))
+  }, [selectedTrip])
+
+  async function updateStatus(memberId, status) {
+    setLoading(true)
+    await supabase.from('trip_members').update({ status }).eq('id', memberId)
+    setMembers(ms => ms.map(m => m.id === memberId ? { ...m, status } : m))
+    setLoading(false)
+  }
+
+  async function copyInviteLink(tripId) {
+    const { data } = await supabase.from('trips').select('invite_token').eq('id', tripId).single()
+    if (data?.invite_token) {
+      navigator.clipboard?.writeText(`${window.location.origin}?join=${data.invite_token}`)
+    }
+  }
+
+  const pending  = members.filter(m => m.status === 'pending')
+  const approved = members.filter(m => m.status === 'approved')
+
+  return (
+    <div onClick={e => e.target === e.currentTarget && onClose()} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 300, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+      <div style={{ background: '#fff', borderRadius: '20px 20px 0 0', padding: '24px 20px 40px', width: '100%', maxWidth: 560, maxHeight: '85vh', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <div style={{ fontFamily: 'Georgia, serif', fontSize: 18 }}>Trip Members</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#9a9088' }}>✕</button>
+        </div>
+
+        {/* Trip selector */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 20, overflowX: 'auto' }}>
+          {trips.filter(t => !t.fixed).map(t => (
+            <button key={t.id} onClick={() => setSelectedTrip(t.id)}
+              style={{ background: selectedTrip === t.id ? '#b85c3a' : '#f7f3ee', color: selectedTrip === t.id ? '#fff' : '#1a1612', border: 'none', borderRadius: 100, padding: '6px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              {t.emoji} {t.label}
+            </button>
+          ))}
+        </div>
+
+        {selectedTrip && (
+          <>
+            {/* Invite link */}
+            <div style={{ background: '#f7f3ee', borderRadius: 12, padding: '12px 16px', marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>Invite link</div>
+                <div style={{ fontSize: 12, color: '#9a9088' }}>Share this — requests need your approval</div>
+              </div>
+              <button onClick={() => copyInviteLink(selectedTrip)}
+                style={{ background: '#b85c3a', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                Copy 🔗
+              </button>
+            </div>
+
+            {/* Pending requests */}
+            {pending.length > 0 && (
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#6b6258', marginBottom: 10 }}>
+                  Pending ({pending.length})
+                </div>
+                {pending.map(m => (
+                  <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid #f5f0eb' }}>
+                    {m.user_avatar
+                      ? <img src={m.user_avatar} alt="" style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover' }} />
+                      : <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#e8e2d9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700 }}>{m.user_name?.[0] ?? '?'}</div>
+                    }
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600 }}>{m.user_name}</div>
+                      <div style={{ fontSize: 11, color: '#9a9088' }}>{m.user_email}</div>
+                    </div>
+                    <button onClick={() => updateStatus(m.id, 'approved')} disabled={loading}
+                      style={{ background: '#22a06b', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', marginRight: 6 }}>
+                      Approve
+                    </button>
+                    <button onClick={() => updateStatus(m.id, 'rejected')} disabled={loading}
+                      style={{ background: '#f7f3ee', color: '#cc4444', border: '1px solid #ece8e2', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                      Reject
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Approved members */}
+            {approved.length > 0 && (
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#6b6258', marginBottom: 10 }}>
+                  Members ({approved.length})
+                </div>
+                {approved.map(m => (
+                  <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid #f5f0eb' }}>
+                    {m.user_avatar
+                      ? <img src={m.user_avatar} alt="" style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover' }} />
+                      : <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#e8e2d9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700 }}>{m.user_name?.[0] ?? '?'}</div>
+                    }
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600 }}>{m.user_name}</div>
+                      <div style={{ fontSize: 11, color: '#9a9088' }}>{m.user_email}</div>
+                    </div>
+                    <div style={{ fontSize: 11, background: '#e8f5ee', color: '#22a06b', borderRadius: 100, padding: '3px 10px', fontWeight: 600 }}>Approved</div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {pending.length === 0 && approved.length === 0 && (
+              <div style={{ textAlign: 'center', padding: '30px 0', color: '#9a9088', fontSize: 14 }}>
+                No members yet — share the invite link!
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Join Request Banner ────────────────────────────────────────
+function JoinBanner({ joinState, onClose }) {
+  if (!joinState) return null
+  const msgs = {
+    pending:  { icon: '⏳', title: 'Request sent!', sub: `Your request to join "${joinState.trip.name}" has been sent. You'll be able to post once the admin approves you.` },
+    approved: { icon: '✅', title: 'You're in!',   sub: `You can now post to "${joinState.trip.name}".` },
+    rejected: { icon: '❌', title: 'Not approved',  sub: `Your request to join "${joinState.trip.name}" was not approved.` },
+  }
+  const msg = msgs[joinState.status] ?? msgs.pending
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 400, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      <div style={{ background: '#fff', borderRadius: 20, padding: 32, maxWidth: 400, width: '100%', textAlign: 'center' }}>
+        <div style={{ fontSize: 48, marginBottom: 12 }}>{msg.icon}</div>
+        <div style={{ fontFamily: 'Georgia, serif', fontSize: 20, marginBottom: 8 }}>{msg.title}</div>
+        <div style={{ color: '#6b6258', fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>{msg.sub}</div>
+        <button onClick={onClose} style={{ background: '#b85c3a', color: '#fff', border: 'none', borderRadius: 10, padding: '10px 28px', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>Got it</button>
+      </div>
+    </div>
+  )
+}
+
 // ── Main Page ─────────────────────────────────────────────────
 export function TimelinePage() {
   const { user, signInWithGoogle, signOut } = useAuth()
@@ -453,6 +663,9 @@ export function TimelinePage() {
   const [posting, setPosting] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [toast, setToast] = useState('')
+  const [showMembers, setShowMembers] = useState(false)
+
+  const joinState = useJoinRequest(trips, user, msg => setToast(msg))
 
   useEffect(() => { loadTripCovers(trips, setTrips) }, [])
 
@@ -553,6 +766,9 @@ export function TimelinePage() {
           {user ? (
             <>
               <Avatar user={user} />
+              {user?.email === ADMIN_EMAIL && (
+                <button onClick={() => setShowMembers(true)} style={{ background: 'none', border: '1px solid #ece8e2', borderRadius: 6, padding: '5px 12px', fontSize: 12, cursor: 'pointer', color: '#6b6258' }}>👥 Members</button>
+              )}
               <button onClick={signOut} style={{ background: 'none', border: '1px solid #ece8e2', borderRadius: 6, padding: '5px 12px', fontSize: 12, cursor: 'pointer', color: '#6b6258' }}>Sign out</button>
             </>
           ) : (
@@ -650,6 +866,8 @@ export function TimelinePage() {
           onClose={() => setMenuMoment(null)} />
       )}
       {deleteMoment && <DeleteConfirmModal onClose={() => setDeleteMoment(null)} onConfirm={handleDelete} loading={deleting} />}
+      {showMembers && <MembersPanel trips={trips} user={user} onClose={() => setShowMembers(false)} />}
+      {joinState && <JoinBanner joinState={joinState} onClose={() => window.location.reload()} />}
       {toast && <div style={s.toast}>{toast}</div>}
     </div>
   )
