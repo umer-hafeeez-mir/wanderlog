@@ -19,18 +19,41 @@ export function WelcomePage({ onSignIn, loading }) {
 
       {/* Floating day pills — decorative */}
       <div style={{ position:'fixed', inset:0, zIndex:1, pointerEvents:'none', overflow:'hidden' }}>
+        {/* Top row — above center content */}
         {[
-          { label:'Umer', color:'#FF6B6B', top:'10%', left:'6%', delay:'0s' },
-          { label:'Istanbul 🕌', color:'#FF9F43', top:'16%', right:'8%', delay:'1.5s' },
-          { label:'Adil', color:'#1DD1A1', top:'52%', left:'4%', delay:'0.8s' },
-          { label:'Sarah', color:'#54A0FF', top:'30%', right:'5%', delay:'2.2s' },
-          { label:'Iesa', color:'#FF9FF3', bottom:'30%', right:'9%', delay:'1s' },
-          { label:'Cappadocia 🎈', color:'#FECA57', bottom:'20%', left:'6%', delay:'1.8s' },
-          { label:'Anas', color:'#5F27CD', top:'68%', right:'6%', delay:'0.4s' },
-          { label:'Shifa', color:'#EE5A24', top:'42%', left:'3%', delay:'2.5s' },
-          { label:'Saba', color:'#48DBFB', bottom:'12%', right:'14%', delay:'1.3s' },
+          { label:'Umer', color:'#FF6B6B', top:'4%', left:'4%', delay:'0s' },
+          { label:'Istanbul 🕌', color:'#FF9F43', top:'4%', left:'50%', delay:'0.6s' },
+          { label:'Sarah', color:'#54A0FF', top:'4%', right:'4%', delay:'1.2s' },
         ].map((p, i) => (
-          <div key={i} style={{ position:'absolute', top:p.top, bottom:p.bottom, left:p.left, right:p.right, background:`${p.color}22`, color:p.color, border:`2px solid ${p.color}`, borderRadius:100, padding:'6px 14px', fontSize:13, fontWeight:700, animation:`float 4s ease-in-out ${p.delay} infinite`, opacity:0.7, whiteSpace:'nowrap' }}>
+          <div key={'t'+i} style={{ position:'absolute', top:p.top, left:p.left, right:p.right, background:`${p.color}22`, color:p.color, border:`2px solid ${p.color}`, borderRadius:100, padding:'5px 12px', fontSize:12, fontWeight:700, animation:`float ${3.5+i*0.4}s ease-in-out ${p.delay} infinite`, opacity:0.75, whiteSpace:'nowrap', transform:'translateX(0)' }}>
+            {p.label}
+          </div>
+        ))}
+        {/* Bottom row — below center content */}
+        {[
+          { label:'Adil', color:'#1DD1A1', bottom:'10%', left:'4%', delay:'0.8s' },
+          { label:'Cappadocia 🎈', color:'#FECA57', bottom:'10%', left:'38%', delay:'1.5s' },
+          { label:'Iesa', color:'#FF9FF3', bottom:'10%', right:'4%', delay:'0.3s' },
+        ].map((p, i) => (
+          <div key={'b'+i} style={{ position:'absolute', bottom:p.bottom, left:p.left, right:p.right, background:`${p.color}22`, color:p.color, border:`2px solid ${p.color}`, borderRadius:100, padding:'5px 12px', fontSize:12, fontWeight:700, animation:`float ${3.8+i*0.5}s ease-in-out ${p.delay} infinite`, opacity:0.75, whiteSpace:'nowrap' }}>
+            {p.label}
+          </div>
+        ))}
+        {/* Left column */}
+        {[
+          { label:'Anas', color:'#5F27CD', top:'22%', left:'2%', delay:'2s' },
+          { label:'Shifa', color:'#EE5A24', top:'74%', left:'2%', delay:'1.1s' },
+        ].map((p, i) => (
+          <div key={'l'+i} style={{ position:'absolute', top:p.top, left:p.left, background:`${p.color}22`, color:p.color, border:`2px solid ${p.color}`, borderRadius:100, padding:'5px 12px', fontSize:12, fontWeight:700, animation:`float ${4+i*0.3}s ease-in-out ${p.delay} infinite`, opacity:0.75, whiteSpace:'nowrap' }}>
+            {p.label}
+          </div>
+        ))}
+        {/* Right column */}
+        {[
+          { label:'Saba', color:'#48DBFB', top:'22%', right:'2%', delay:'1.7s' },
+          { label:'Turkey 🇹🇷', color:'#FF6B6B', top:'74%', right:'2%', delay:'0.9s' },
+        ].map((p, i) => (
+          <div key={'r'+i} style={{ position:'absolute', top:p.top, right:p.right, background:`${p.color}22`, color:p.color, border:`2px solid ${p.color}`, borderRadius:100, padding:'5px 12px', fontSize:12, fontWeight:700, animation:`float ${3.6+i*0.4}s ease-in-out ${p.delay} infinite`, opacity:0.75, whiteSpace:'nowrap' }}>
             {p.label}
           </div>
         ))}
