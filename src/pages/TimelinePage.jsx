@@ -780,7 +780,7 @@ export function TimelinePage() {
       await addMoment({ ...payload, userId: user.id, userName: user.user_metadata?.full_name ?? user.email, userAvatar: user.user_metadata?.avatar_url ?? null, latitude: payload.latitude, longitude: payload.longitude })
       setShowAddMoment(false)
       showToast('Moment posted ✨')
-    } catch(e) { showToast('Error: ' + e.message) }
+    } catch(e) { console.error(e); showToast('Failed: ' + e.message) }
     finally { setPosting(false) }
   }
 
@@ -1014,7 +1014,7 @@ export function TimelinePage() {
       )}
 
       {/* ── Modals ── */}
-      {showAddMoment && <AddMomentModal onClose={() => { setShowAddMoment(false); setGalleryFiles([]) }} onAdd={handleAddMoment} loading={posting} initialFiles={galleryFiles} />}
+      {showAddMoment && <AddMomentModal onClose={() => { setShowAddMoment(false); setGalleryFiles([]) }} onAdd={handleAddMoment} loading={posting} initialFiles={galleryFiles} key={galleryFiles.length + '-' + showAddMoment} />}
       {showAddTrip && <AddTripModal onClose={() => setShowAddTrip(false)} onAdd={handleAddTrip} />}
       {showMembers && <MembersPanel trips={trips} user={user} onClose={() => setShowMembers(false)} />}
       {menuMoment && <MomentMenu moment={menuMoment} user={user} onDelete={m => { setMenuMoment(null); setDeleteMoment(m) }} onClose={() => setMenuMoment(null)} />}
