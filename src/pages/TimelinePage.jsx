@@ -537,42 +537,46 @@ export function TimelinePage() {
       <div style={{ position:'relative', zIndex:1 }}>
 
         {/* ── Header ── */}
-        <header style={{ position:'sticky', top:0, zIndex:100, background:'rgba(13,13,13,0.88)', backdropFilter:'blur(20px)', WebkitBackdropFilter:'blur(20px)' }}>
+        <header style={{ position:'sticky', top:0, zIndex:100, background:'rgba(255,255,255,0.75)', backdropFilter:'blur(20px)', WebkitBackdropFilter:'blur(20px)', borderBottom:'1px solid rgba(0,0,0,0.06)' }}>
           {/* Top bar */}
           <div style={{ padding:'0 20px', height:52, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-            <div style={{ fontFamily:'Cormorant Garamond, Georgia, serif', fontStyle:'italic', fontSize:22, color:'#F5C842', letterSpacing:'-0.01em' }}>wanderlog</div>
+            <div style={{ fontFamily:'Cormorant Garamond, Georgia, serif', fontStyle:'italic', fontSize:22, color:'#111', letterSpacing:'-0.01em', fontWeight:600 }}>wanderlog</div>
             {user ? (
               <div style={{ position:'relative' }}>
                 <button onClick={()=>setShowAccountMenu(m=>!m)} style={{ background:'none', border:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:6, padding:'4px 0' }}>
                   <Avatar src={user.user_metadata?.avatar_url} name={user.email} size={30} />
-                  <span style={{ color:'rgba(255,255,255,0.4)', fontSize:11 }}>{showAccountMenu?'▲':'▼'}</span>
+                  <span style={{ color:'#aaa', fontSize:10 }}>{showAccountMenu?'▲':'▼'}</span>
                 </button>
                 {showAccountMenu && (<>
                   <div onClick={()=>setShowAccountMenu(false)} style={{ position:'fixed', inset:0, zIndex:98 }} />
-                  <div style={{ position:'absolute', top:42, right:0, background:'rgba(20,20,20,0.96)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:14, minWidth:180, boxShadow:'0 8px 32px rgba(0,0,0,0.4)', zIndex:99, overflow:'hidden', backdropFilter:'blur(12px)' }}>
-                    <div style={{ padding:'12px 14px', borderBottom:'1px solid rgba(255,255,255,0.07)' }}>
-                      <div style={{ fontSize:13, fontFamily:'Geist, sans-serif', fontWeight:600, color:'#fff' }}>{user.user_metadata?.full_name??'Traveller'}</div>
-                      <div style={{ fontSize:11, color:'rgba(255,255,255,0.35)', marginTop:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{user.email}</div>
+                  <div style={{ position:'absolute', top:42, right:0, background:'rgba(255,255,255,0.96)', border:'1px solid rgba(0,0,0,0.08)', borderRadius:14, minWidth:180, boxShadow:'0 8px 32px rgba(0,0,0,0.12)', zIndex:99, overflow:'hidden', backdropFilter:'blur(12px)' }}>
+                    <div style={{ padding:'12px 14px', borderBottom:'1px solid #f0f0f0' }}>
+                      <div style={{ fontSize:13, fontFamily:'Geist, sans-serif', fontWeight:600, color:'#111' }}>{user.user_metadata?.full_name??'Traveller'}</div>
+                      <div style={{ fontSize:11, color:'#aaa', marginTop:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{user.email}</div>
                     </div>
-                    {user.email===ADMIN_EMAIL && <button onClick={()=>{setShowMembers(true);setShowAccountMenu(false)}} style={{ width:'100%', background:'none', border:'none', padding:'11px 14px', color:'rgba(255,255,255,0.7)', fontFamily:'Geist, sans-serif', fontSize:13, textAlign:'left', cursor:'pointer' }}>Members</button>}
-                    <button onClick={()=>{signOut();setShowAccountMenu(false)}} style={{ width:'100%', background:'none', border:'none', padding:'11px 14px', color:'#ff6b6b', fontFamily:'Geist, sans-serif', fontSize:13, textAlign:'left', cursor:'pointer' }}>Sign out</button>
+                    {user.email===ADMIN_EMAIL && <button onClick={()=>{setShowMembers(true);setShowAccountMenu(false)}} style={{ width:'100%', background:'none', border:'none', padding:'11px 14px', color:'#333', fontFamily:'Geist, sans-serif', fontSize:13, textAlign:'left', cursor:'pointer' }}>Members</button>}
+                    <button onClick={()=>{signOut();setShowAccountMenu(false)}} style={{ width:'100%', background:'none', border:'none', padding:'11px 14px', color:'#e53e3e', fontFamily:'Geist, sans-serif', fontSize:13, textAlign:'left', cursor:'pointer' }}>Sign out</button>
                   </div>
                 </>)}
               </div>
             ) : (
-              <button onClick={signInWithGoogle} style={{ background:'#F5C842', color:'#111', border:'none', borderRadius:10, padding:'7px 16px', fontSize:13, fontFamily:'Geist, sans-serif', fontWeight:700, cursor:'pointer' }}>Sign in</button>
+              <button onClick={signInWithGoogle} style={{ background:'#111', color:'#fff', border:'none', borderRadius:100, padding:'8px 18px', fontSize:13, fontFamily:'Geist, sans-serif', fontWeight:600, cursor:'pointer' }}>Sign in with Google</button>
             )}
           </div>
 
-          {/* Tab bar */}
-          <div style={{ display:'flex', overflowX:'auto', scrollbarWidth:'none', borderTop:'1px solid rgba(255,255,255,0.06)', padding:'0 4px' }}>
-            {allTabs.map(tab => (
-              <button key={tab.slug} onClick={()=>setActiveSlug(tab.slug)}
-                style={{ background:'none', border:'none', borderBottom:`2px solid ${activeSlug===tab.slug?'#F5C842':'transparent'}`, color:activeSlug===tab.slug?'#fff':'rgba(255,255,255,0.35)', padding:'10px 16px', fontSize:13, fontFamily:'Geist, sans-serif', fontWeight:activeSlug===tab.slug?600:400, cursor:'pointer', whiteSpace:'nowrap', flexShrink:0, transition:'all 0.15s' }}>
-                {tab.emoji} {tab.label}
-              </button>
-            ))}
-            {user && <button onClick={()=>setShowAddTrip(true)} style={{ background:'none', border:'none', borderBottom:'2px solid transparent', color:'rgba(255,255,255,0.25)', padding:'10px 14px', fontSize:18, cursor:'pointer', flexShrink:0 }}>＋</button>}
+          {/* Tab bar — colorful pills like Config Timeline */}
+          <div style={{ display:'flex', overflowX:'auto', scrollbarWidth:'none', padding:'0 16px 10px', gap:8 }}>
+            {allTabs.map((tab, idx) => {
+              const isActive = activeSlug === tab.slug
+              const color = tab.slug === 'today' ? '#111' : tab.slug === 'upcoming' ? '#888' : dayColor(idx)
+              return (
+                <button key={tab.slug} onClick={()=>setActiveSlug(tab.slug)}
+                  style={{ background:isActive?color:'transparent', color:isActive?'#fff':color, border:`2px solid ${isActive?color:color}`, borderRadius:100, padding:'6px 16px', fontSize:13, fontFamily:'Geist, sans-serif', fontWeight:700, cursor:'pointer', whiteSpace:'nowrap', flexShrink:0, transition:'all 0.15s', boxShadow:isActive?`0 2px 12px ${color}44`:'none' }}>
+                  {tab.emoji} {tab.label}
+                </button>
+              )
+            })}
+            {user && <button onClick={()=>setShowAddTrip(true)} style={{ background:'transparent', border:'2px dashed #ddd', borderRadius:100, padding:'6px 14px', fontSize:13, color:'#aaa', cursor:'pointer', flexShrink:0, fontFamily:'Geist, sans-serif', fontWeight:600 }}>＋ Trip</button>}
           </div>
         </header>
 
