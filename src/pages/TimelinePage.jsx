@@ -795,34 +795,14 @@ export function TimelinePage() {
   const [deleting, setDeleting] = useState(false)
   const [toast, setToast] = useState('')
 
-  const showToast = msg => { setToast(msg); setTimeout(() => setToast(''), 3000) }
   const [showAccountMenu, setShowAccountMenu] = useState(false)
+  const [activeDay, setActiveDay] = useState(null)
+  const [momentCache, setMomentCache] = useState({})
+  const showToast = msg => { setToast(msg); setTimeout(() => setToast(''), 3000) }
   const joinState = useJoinRequest(trips, user, showToast)
 
   useEffect(() => { loadTripCovers(trips, setTrips) }, [])
 
-  // Prefetch adjacent trip data for instant tab switching
-  useEffect(() => {
-    const allSlugs = trips.map(t => t.slug)
-    const idx = allSlugs.indexOf(activeSlug)
-    const toPreload = [allSlugs[idx - 1], allSlugs[idx + 1]].filter(Boolean)
-    toPreload.forEach(slug => {
-      const trip = trips.find(t => t.slug === slug)
-      if (!trip?.id || momentCache[trip.id]) return
-      supabase.from('moments').select(`
-        id, user_id, user_name, user_avatar, caption, location,
-        latitude, longitude, created_at,
-        moment_images (id, url, position),
-        reactions (id, user_id, emoji)
-      `).eq('trip_id', trip.id).order('created_at', { ascending: false })
-        .then(({ data }) => {
-          if (data) setMomentCache(c => ({ ...c, [trip.id]: data }))
-        })
-    })
-  }, [activeSlug])
-
-  // Cache moments per tripId so tab switching is instant
-  const [momentCache, setMomentCache] = useState({})
   const activeTrip = trips.find(t => t.slug === activeSlug)
   const { moments, loading, addMoment, toggleReaction, refetch, setMoments } = useMoments(activeTrip?.id ?? null)
 
@@ -901,6 +881,9 @@ export function TimelinePage() {
     }
     finally { setDeleting(false) }
   }
+
+  // Reset activeDay when switching tabs
+  useEffect(() => { setActiveDay(null) }, [activeSlug])
 
   const allTabs = [...trips, UPCOMING_TAB]
 
