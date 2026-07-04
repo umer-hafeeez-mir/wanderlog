@@ -22,7 +22,8 @@ export function WelcomePage({ onSignIn, loading }) {
         {/* Top row — above center content */}
         {[
           { label:'Umer', color:'#FF6B6B', top:'4%', left:'4%', delay:'0s' },
-          { label:'Istanbul 🕌', color:'#FF9F43', top:'4%', left:'50%', delay:'0.6s' },
+          { label:'Mom', color:'#FF9FF3', top:'4%', left:'28%', delay:'0.4s' },
+          { label:'Istanbul 🕌', color:'#FF9F43', top:'4%', left:'52%', delay:'0.8s' },
           { label:'Sarah', color:'#54A0FF', top:'4%', right:'4%', delay:'1.2s' },
         ].map((p, i) => (
           <div key={'t'+i} style={{ position:'absolute', top:p.top, left:p.left, right:p.right, background:`${p.color}22`, color:p.color, border:`2px solid ${p.color}`, borderRadius:100, padding:'5px 12px', fontSize:12, fontWeight:700, animation:`float ${3.5+i*0.4}s ease-in-out ${p.delay} infinite`, opacity:0.75, whiteSpace:'nowrap', transform:'translateX(0)' }}>
@@ -32,7 +33,8 @@ export function WelcomePage({ onSignIn, loading }) {
         {/* Bottom row — below center content */}
         {[
           { label:'Adil', color:'#1DD1A1', bottom:'10%', left:'4%', delay:'0.8s' },
-          { label:'Cappadocia 🎈', color:'#FECA57', bottom:'10%', left:'38%', delay:'1.5s' },
+          { label:'Dad', color:'#EE5A24', bottom:'10%', left:'26%', delay:'1.1s' },
+          { label:'Cappadocia 🎈', color:'#FECA57', bottom:'10%', left:'44%', delay:'1.5s' },
           { label:'Iesa', color:'#FF9FF3', bottom:'10%', right:'4%', delay:'0.3s' },
         ].map((p, i) => (
           <div key={'b'+i} style={{ position:'absolute', bottom:p.bottom, left:p.left, right:p.right, background:`${p.color}22`, color:p.color, border:`2px solid ${p.color}`, borderRadius:100, padding:'5px 12px', fontSize:12, fontWeight:700, animation:`float ${3.8+i*0.5}s ease-in-out ${p.delay} infinite`, opacity:0.75, whiteSpace:'nowrap' }}>
@@ -68,7 +70,7 @@ export function WelcomePage({ onSignIn, loading }) {
             wanderlog
           </div>
           <div style={{ fontSize:14, color:'#888', fontFamily:'Geist, sans-serif', fontWeight:400, marginTop:6, letterSpacing:'0.02em' }}>
-            Your family's travel journal
+            Our family's journal
           </div>
         </div>
 
@@ -119,7 +121,7 @@ export function WelcomePage({ onSignIn, loading }) {
 
       {/* Bottom wordmark */}
       <div style={{ position:'relative', zIndex:2, textAlign:'center', padding:'16px', color:'#ccc', fontFamily:'Geist, sans-serif', fontSize:11 }}>
-        wanderlog · your family travel journal
+        wanderlog · our family's journal
       </div>
     </div>
   )
