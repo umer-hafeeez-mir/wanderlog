@@ -694,6 +694,7 @@ export function TimelinePage() {
   const [galleryFiles, setGalleryFiles] = useState([])
   const [slideDir, setSlideDir] = useState('none')
   const [toast, setToast] = useState('')
+  const [pendingBadge, setPendingBadge] = useState(0)
 
   const showToast = msg => { setToast(msg); setTimeout(() => setToast(''), 3000) }
 
@@ -703,12 +704,22 @@ export function TimelinePage() {
 
   useEffect(() => { loadTripCovers(trips, setTrips) }, [])
 
-  // Deep link: ?approve=true opens Members panel directly
+  // Load pending member count for admin badge
+  useEffect(() => {
+    if (user?.email !== ADMIN_EMAIL) return
+    supabase.from('trip_members').select('id', { count: 'exact' })
+      .eq('status', 'pending')
+      .eq('trip_id', DEFAULT_TRIPS.find(t => !t.fixed)?.id)
+      .then(({ count }) => setPendingBadge(count ?? 0))
+  }, [user])
+
+  // Deep link: ?approve=true opens Members panel directly, no drawer needed
   useEffect(() => {
     try {
       const params = new URLSearchParams(window.location.search)
       if (params.get('approve') === 'true' && user?.email === ADMIN_EMAIL) {
-        setShowMembers(true)
+        setShowAccountMenu(false) // close drawer if open
+        setShowMembers(true)      // open Members directly
         window.history.replaceState({}, '', window.location.pathname)
       }
     } catch(e) {}
@@ -983,11 +994,13 @@ export function TimelinePage() {
               <div style={{ flex:1, overflowY:'auto' }}>
                 {[
                   { label:'Travel Documents', icon:'🗂️', action:()=>{setShowDocs(true);setShowAccountMenu(false)} },
-                  ...(user.email===ADMIN_EMAIL?[{ label:'Trip Members', icon:'👥', action:()=>{setShowMembers(true);setShowAccountMenu(false)} }]:[]),
+                  ...(user.email===ADMIN_EMAIL?[{ label:'Trip Members', icon:'👥', action:()=>{setShowMembers(true);setShowAccountMenu(false)}, highlight: pendingBadge > 0 }]:[]),
                 ].map(item=>(
                   <button key={item.label} onClick={item.action}
                     style={{ width:'100%', background:'none', border:'none', borderBottom:'1px solid #f8f8f8', padding:'16px 20px', display:'flex', alignItems:'center', gap:14, cursor:'pointer', fontFamily:'Geist, sans-serif', fontSize:14, color:'#111', textAlign:'left' }}>
-                    <span style={{ fontSize:20, width:28, textAlign:'center' }}>{item.icon}</span>{item.label}
+                    <span style={{ fontSize:20, width:28, textAlign:'center' }}>{item.icon}</span>
+                    <span style={{ flex:1 }}>{item.label}</span>
+                    {item.highlight && <span style={{ background:'#FF6B6B', color:'#fff', borderRadius:100, padding:'2px 8px', fontSize:11, fontWeight:700 }}>{pendingBadge}</span>}
                   </button>
                 ))}
               </div>
