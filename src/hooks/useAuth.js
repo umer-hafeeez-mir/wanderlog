@@ -27,14 +27,22 @@ export function useAuth() {
     return () => subscription.unsubscribe()
   }, [])
 
-  const signInWithGoogle = useCallback(() =>
-    supabase.auth.signInWithOAuth({
+  const signInWithGoogle = useCallback(() => {
+    // Preserve join token through OAuth by appending it to redirectTo
+    let redirectTo = window.location.origin
+    try {
+      const token = localStorage.getItem('wanderlog_join_token')
+        || new URLSearchParams(window.location.search).get('join')
+      if (token) redirectTo = `${window.location.origin}?join=${token}`
+    } catch(e) {}
+    return supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: window.location.origin,
-        queryParams: { prompt: 'select_account' }, // Always show account picker
+        redirectTo,
+        queryParams: { prompt: 'select_account' },
       }
-    }), [])
+    })
+  }, [])
 
   const signOut = useCallback(async () => {
     setUser(null) // Optimistic — show welcome instantly
