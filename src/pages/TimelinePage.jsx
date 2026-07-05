@@ -22,15 +22,25 @@ const UPCOMING_TAB = { slug: 'upcoming', label: 'Upcoming', emoji: '🗓️', fi
 const REACTIONS = ['❤️','😍','🔥','😂','😮','👏','🙌','💯']
 const EMOJI_OPTIONS = ['✈️','🌍','🏔️','🏖️','🏙️','🗺️','🎒','🚂','🛳️','🏕️','🍜','☕','🎭','📸','🌅','⛩️','🕌','🏛️','🌴','❄️']
 
-// Vivid colors per day — like Config Timeline
 const DAY_COLORS = ['#FF6B6B','#FF9F43','#FECA57','#1DD1A1','#48DBFB','#FF9FF3','#54A0FF','#5F27CD','#00D2D3','#EE5A24','#C8D6E5','#576574']
 const dayColor = idx => DAY_COLORS[idx % DAY_COLORS.length]
 
-// Inject fonts
 const _fl = document.createElement('link')
 _fl.href = 'https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Cormorant+Garamond:ital,wght@0,600;1,400;1,600&display=swap'
 _fl.rel = 'stylesheet'
 if (!document.head.querySelector('[href*="Geist"]')) document.head.appendChild(_fl)
+
+// ── CRITICAL: Save join token synchronously before ANY render ──
+// Must run at module load time so it's in localStorage before React starts
+;(function saveJoinToken() {
+  try {
+    const token = new URLSearchParams(window.location.search).get('join')
+    if (token) {
+      localStorage.setItem('wanderlog_join_token', token)
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+  } catch(e) {}
+})()
 
 // ── Helpers ───────────────────────────────────────────────────
 async function loadTripCovers(trips, setTrips) {
@@ -44,37 +54,33 @@ async function loadTripCovers(trips, setTrips) {
   }))
 }
 
-function useJoinRequest(trips, user, showToast) {
+// ── Join Request Hook ─────────────────────────────────────────
+// Token is already in localStorage by now (saved synchronously above)
+function useJoinRequest(user, showToast) {
   const [joinState, setJoinState] = useState(null)
+  const [processed, setProcessed] = useState(false)
 
-  // Step 1: Save token to localStorage BEFORE OAuth redirects away
   useEffect(() => {
-    const token = new URLSearchParams(window.location.search).get('join')
-    if (token) {
-      localStorage.setItem('wanderlog_join_token', token)
-      // Clean URL immediately so it doesn't confuse auth
-      window.history.replaceState({}, '', '/')
-    }
-  }, [])
-
-  // Step 2: After sign-in, pick up token from localStorage
-  useEffect(() => {
-    if (!user) return
+    if (!user || processed) return
     const token = localStorage.getItem('wanderlog_join_token')
     if (!token) return
 
-    async function go() {
-      // Clear token first so it doesn't re-trigger
-      localStorage.removeItem('wanderlog_join_token')
+    setProcessed(true)
+    localStorage.removeItem('wanderlog_join_token')
 
-      const { data: trip } = await supabase.from('trips').select('id, name, invite_token').eq('invite_token', token).single()
+    async function go() {
+      const { data: trip } = await supabase
+        .from('trips').select('id, name, invite_token')
+        .eq('invite_token', token).single()
+
       if (!trip) { showToast('Invalid invite link'); return }
 
-      // Check if already requested
-      const { data: existing } = await supabase.from('trip_members').select('status').eq('trip_id', trip.id).eq('user_id', user.id).single()
+      const { data: existing } = await supabase
+        .from('trip_members').select('status')
+        .eq('trip_id', trip.id).eq('user_id', user.id).single()
+
       if (existing) { setJoinState({ trip, status: existing.status }); return }
 
-      // Insert pending request for ALL non-fixed trips
       const allIds = DEFAULT_TRIPS.filter(t => !t.fixed).map(t => t.id)
       const { error } = await supabase.from('trip_members').upsert(
         allIds.map(tripId => ({
@@ -88,34 +94,20 @@ function useJoinRequest(trips, user, showToast) {
         { onConflict: 'trip_id,user_id' }
       )
 
-      if (error) { showToast('Something went wrong. Try again.'); return }
+      if (error) { showToast('Something went wrong'); return }
 
-      // Notify admin — try Edge Function, fall back to WhatsApp
-      const requesterName = user.user_metadata?.full_name ?? user.email
-      try {
-        const { data: nd, error: fnErr } = await supabase.functions.invoke('notify-join-request', {
-          body: { tripName: trip.name, requesterName, requesterEmail: user.email, adminEmail: ADMIN_EMAIL }
-        })
-        if (fnErr || !nd?.emailOk) throw new Error('fn failed')
-      } catch {
-        // Always open WhatsApp as reliable fallback
-        const msg = encodeURIComponent(`📸 Wanderlog join request
-
-*${requesterName}* (${user.email}) wants to join the family trip.
-
-Approve in the Members section: https://wanderlog-one.vercel.app`)
-        window.open(`https://wa.me/${ADMIN_WHATSAPP}?text=${msg}`, '_blank')
-      }
+      const name = user.user_metadata?.full_name ?? user.email
+      const msg = encodeURIComponent(`📸 Wanderlog\n\n*${name}* (${user.email}) wants to join the family journal.\n\nApprove here: https://wanderlog-one.vercel.app`)
+      window.open(`https://wa.me/${ADMIN_WHATSAPP}?text=${msg}`, '_blank')
 
       setJoinState({ trip, status: 'pending' })
     }
     go()
-  }, [user])
+  }, [user, processed])
 
   return joinState
 }
 
-// Generate consistent color from name for identity dot
 function stringToColor(str) {
   const colors = ['#FF6B6B','#FF9F43','#FECA57','#1DD1A1','#48DBFB','#FF9FF3','#54A0FF','#5F27CD']
   let hash = 0
@@ -123,42 +115,34 @@ function stringToColor(str) {
   return colors[Math.abs(hash) % colors.length]
 }
 
-// ── Access control ───────────────────────────────────────────
+// ── Access Control ────────────────────────────────────────────
 function useAccessControl(user) {
-  const [access, setAccess] = useState('loading') // 'loading' | 'allowed' | 'denied' | 'pending'
+  const [access, setAccess] = useState('loading')
 
   useEffect(() => {
     if (!user) { setAccess('loading'); return }
-
-    // Admin always allowed
     if (user.email === ADMIN_EMAIL) { setAccess('allowed'); return }
 
     async function check() {
-      // Check allowlist
       const { data: allowed } = await supabase
-        .from('allowed_users')
-        .select('email')
-        .eq('email', user.email)
-        .single()
+        .from('allowed_users').select('email')
+        .eq('email', user.email).single()
 
       if (allowed) { setAccess('allowed'); return }
 
-      // Check if they have a pending/approved trip_member record
       const { data: member } = await supabase
-        .from('trip_members')
-        .select('status')
-        .eq('user_id', user.id)
-        .limit(1)
-        .single()
+        .from('trip_members').select('status')
+        .eq('user_id', user.id).limit(1).single()
 
       if (member?.status === 'approved') {
-        // Add to allowlist so future logins are instant
-        await supabase.from('allowed_users').insert({ email: user.email, added_by: 'approved_member' })
+        await supabase.from('allowed_users').insert({ email: user.email, added_by: 'approved_member' }).catch(() => {})
         setAccess('allowed')
       } else if (member?.status === 'pending') {
         setAccess('pending')
       } else {
-        setAccess('denied')
+        // If they have a join token pending, don't show denied yet
+        const hasToken = localStorage.getItem('wanderlog_join_token')
+        setAccess(hasToken ? 'allowed' : 'denied')
       }
     }
     check()
@@ -169,32 +153,18 @@ function useAccessControl(user) {
 
 function isVideo(url) { return url && /\.(mp4|mov|webm|ogg|avi)$/i.test(url.split('?')[0]) }
 
-// ── Push notification subscription ───────────────────────────
 async function subscribeToPush(user) {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
   try {
     const reg = await navigator.serviceWorker.ready
     const existing = await reg.pushManager.getSubscription()
-    if (existing) return // already subscribed
-
+    if (existing) return
     const permission = await Notification.requestPermission()
     if (permission !== 'granted') return
-
-    // VAPID not needed for basic push — use simple subscription
-    const sub = await reg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: null, // works without VAPID for same-origin
-    }).catch(() => null)
-
+    const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: null }).catch(() => null)
     if (!sub) return
-
     const { endpoint, keys } = sub.toJSON()
-    await supabase.from('push_subscriptions').upsert({
-      user_id: user.id,
-      endpoint,
-      p256dh: keys?.p256dh ?? '',
-      auth: keys?.auth ?? '',
-    }, { onConflict: 'endpoint' })
+    await supabase.from('push_subscriptions').upsert({ user_id: user.id, endpoint, p256dh: keys?.p256dh ?? '', auth: keys?.auth ?? '' }, { onConflict: 'endpoint' })
   } catch {}
 }
 
@@ -279,13 +249,6 @@ function Comments({ momentId, user }) {
 function MomentCard({ moment, user, onReact, onMenuOpen, cardIdx = 0 }) {
   const [lightboxIndex, setLightboxIndex] = useState(null)
   const [showHeartBurst, setShowHeartBurst] = useState(false)
-
-  function handleDoubleTap(e) {
-    if (!user) return
-    onReact(moment.id, '❤️')
-    setShowHeartBurst(true)
-    setTimeout(() => setShowHeartBurst(false), 800)
-  }
   const images = moment.moment_images ?? []
   const reactions = moment.reactions ?? []
   const heartCount = reactions.filter(r => r.emoji === '❤️').length
@@ -299,62 +262,50 @@ function MomentCard({ moment, user, onReact, onMenuOpen, cardIdx = 0 }) {
   const [showPicker, setShowPicker] = useState(false)
   const time = format(parseISO(moment.created_at), 'h:mm a')
 
+  function handleDoubleTap() {
+    if (!user) return
+    onReact(moment.id, '❤️')
+    setShowHeartBurst(true)
+    setTimeout(() => setShowHeartBurst(false), 800)
+  }
+
   return (
     <div className='card-in moment-card'
       style={{ background:'#fff', borderRadius:16, boxShadow:'0 2px 12px rgba(0,0,0,0.07)', marginBottom:10, overflow:'hidden', animationDelay:`${cardIdx * 0.06}s`, position:'relative' }}
       onDoubleClick={handleDoubleTap}>
-      {/* Heart burst on double tap */}
       {showHeartBurst && (
         <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', pointerEvents:'none', zIndex:10 }}>
           <div style={{ fontSize:72, animation:'heartBurst 0.8s ease forwards' }}>❤️</div>
           <style>{`@keyframes heartBurst { 0%{opacity:0;transform:scale(0.3)} 30%{opacity:1;transform:scale(1.2)} 60%{opacity:1;transform:scale(1)} 100%{opacity:0;transform:scale(0.8)} }`}</style>
         </div>
       )}
-      {/* Header — prominent poster identity */}
       <div style={{ display:'flex', alignItems:'center', gap:10, padding:'12px 14px 0' }}>
         <div style={{ position:'relative', flexShrink:0 }}>
           <Avatar src={moment.user_avatar} name={moment.user_name} size={38} />
-          <div style={{ position:'absolute', bottom:-1, right:-1, width:12, height:12, borderRadius:'50%', background: stringToColor(moment.user_name??''), border:'2px solid #fff' }} />
+          <div style={{ position:'absolute', bottom:-1, right:-1, width:12, height:12, borderRadius:'50%', background:stringToColor(moment.user_name??''), border:'2px solid #fff' }} />
         </div>
         <div style={{ flex:1 }}>
-          <div style={{ fontSize:14, fontWeight:700, fontFamily:'Geist, sans-serif', color:'#111', letterSpacing:'-0.01em' }}>{moment.user_name ?? 'Traveller'}</div>
+          <div style={{ fontSize:14, fontWeight:700, fontFamily:'Geist, sans-serif', color:'#111' }}>{moment.user_name ?? 'Traveller'}</div>
           <div style={{ fontSize:11, color:'#aaa', fontFamily:'Geist, sans-serif', marginTop:1 }}>{time}{moment.location ? ` · ${moment.location}` : ''}</div>
         </div>
         {user && <button onClick={()=>onMenuOpen(moment)} style={{ background:'none', border:'none', cursor:'pointer', color:'#ccc', padding:'4px 8px', fontSize:18, borderRadius:6 }}>•••</button>}
       </div>
-
-      {/* Caption */}
-      {moment.caption && <p style={{ margin:'8px 14px', fontSize:14, lineHeight:1.55, fontFamily:'Geist, sans-serif', color:'#222', fontWeight:400 }}>{moment.caption}</p>}
-
-
-
-      {/* Photos */}
+      {moment.caption && <p style={{ margin:'8px 14px', fontSize:14, lineHeight:1.55, fontFamily:'Geist, sans-serif', color:'#222' }}>{moment.caption}</p>}
       <PhotoGrid images={images} onPhotoClick={setLightboxIndex} />
       {lightboxIndex !== null && <Lightbox images={images} startIndex={lightboxIndex} onClose={()=>setLightboxIndex(null)} />}
-
-      {/* Reactions */}
       <div style={{ padding:'10px 14px 0', display:'flex', alignItems:'center', gap:6, flexWrap:'wrap', position:'relative' }}>
-        {/* Heart — animated */}
         <button onClick={()=>user&&onReact(moment.id,'❤️')} disabled={!user}
-          style={{ background:heartMine?'#fff0f0':'#f5f5f5', border:`1.5px solid ${heartMine?'#ff6b6b':'#e8e8e8'}`, borderRadius:100, padding:'5px 14px', fontSize:13, cursor:user?'pointer':'default', display:'flex', alignItems:'center', gap:6, opacity:user?1:0.55, transition:'all 0.2s', transform:'scale(1)' }}
-          onMouseEnter={e=>{ if(user) e.currentTarget.style.transform='scale(1.05)' }}
-          onMouseLeave={e=>e.currentTarget.style.transform='scale(1)'}
-          onMouseDown={e=>e.currentTarget.style.transform='scale(0.95)'}
-          onMouseUp={e=>e.currentTarget.style.transform='scale(1.05)'}>
-          <span style={{ fontSize:16, display:'inline-block', transition:'transform 0.3s cubic-bezier(0.36,0.07,0.19,0.97)', transform: heartMine ? 'scale(1.2)' : 'scale(1)' }}>{heartMine ? '❤️' : '🤍'}</span>
+          style={{ background:heartMine?'#fff0f0':'#f5f5f5', border:`1.5px solid ${heartMine?'#ff6b6b':'#e8e8e8'}`, borderRadius:100, padding:'5px 14px', fontSize:13, cursor:user?'pointer':'default', display:'flex', alignItems:'center', gap:6, opacity:user?1:0.55, transition:'all 0.2s' }}>
+          <span style={{ fontSize:16, transition:'transform 0.3s', transform:heartMine?'scale(1.2)':'scale(1)' }}>{heartMine?'❤️':'🤍'}</span>
           <span style={{ fontFamily:'Geist, sans-serif', fontWeight:700, fontSize:12, color:heartMine?'#e53e3e':'#666', minWidth:8 }}>{heartCount}</span>
           {heartCount > 0 && <span style={{ fontFamily:'Geist, sans-serif', fontSize:11, color:'#bbb' }}>{heartCount===1?'love':'loves'}</span>}
         </button>
-
-        {/* Other reactions */}
         {otherReactions.map(r => (
           <button key={r.emoji} onClick={()=>user&&onReact(moment.id,r.emoji)}
             style={{ background:r.mine?'#fff8e0':'#f5f5f5', border:`1.5px solid ${r.mine?'#e8a838':'#e8e8e8'}`, borderRadius:100, padding:'4px 10px', fontSize:13, cursor:'pointer', display:'flex', alignItems:'center', gap:4 }}>
             {r.emoji} <span style={{ fontSize:11, fontWeight:600, fontFamily:'Geist, sans-serif', color:'#666' }}>{r.count}</span>
           </button>
         ))}
-
-        {/* Add reaction */}
         {user && (
           <div style={{ position:'relative' }}>
             <button onClick={()=>setShowPicker(p=>!p)} style={{ background:'#f5f5f5', border:'1.5px solid #e8e8e8', borderRadius:100, padding:'4px 10px', fontSize:15, cursor:'pointer', color:'#aaa', lineHeight:1 }}>＋</button>
@@ -366,8 +317,6 @@ function MomentCard({ moment, user, onReact, onMenuOpen, cardIdx = 0 }) {
           </div>
         )}
       </div>
-
-      {/* Comments */}
       <Comments momentId={moment.id} user={user} />
     </div>
   )
@@ -526,43 +475,37 @@ function DeleteConfirmModal({ onClose, onConfirm, loading }) {
 }
 
 // ── Members Panel ─────────────────────────────────────────────
-function MembersPanel({ trips, user, onClose }) {
+function MembersPanel({ trips, user, onClose, showToast }) {
   const [members, setMembers] = useState([])
   const [selectedTrip, setSelectedTrip] = useState(trips.filter(t=>!t.fixed)[0]?.id??null)
   const [loading, setLoading] = useState(false)
   const [copyMsg, setCopyMsg] = useState('')
   useEffect(() => { if(!selectedTrip)return; supabase.from('trip_members').select('*').eq('trip_id',selectedTrip).order('requested_at').then(({data})=>setMembers(data??[])) }, [selectedTrip])
+
   async function updateStatus(memberId, status) {
     setLoading(true)
     const m = members.find(x => x.id === memberId)
     if (!m) { setLoading(false); return }
-
     await supabase.from('trip_members').update({ status }).eq('user_id', m.user_id)
     setMembers(ms => ms.map(x => x.user_id === m.user_id ? { ...x, status } : x))
-
-    // Notify the member via WhatsApp
     if (status === 'approved') {
-      const msg = encodeURIComponent(
-        `✅ You've been approved to join the family Wanderlog!
-
-Open the app here: https://wanderlog-one.vercel.app
-
-Sign in with Google and you'll see all the trips. Welcome! 🎉`
-      )
-      // Try to notify via their phone if we have it, else open WA for admin to send manually
+      await supabase.from('allowed_users').upsert({ email: m.user_email, added_by: 'admin' }, { onConflict: 'email' }).catch(() => {})
+      const msg = encodeURIComponent(`✅ You've been approved to join the family Wanderlog!\n\nOpen the app: https://wanderlog-one.vercel.app\n\nSign in with Google and you'll see all the trips. Welcome! 🎉`)
       window.open(`https://wa.me/?text=${msg}`, '_blank')
+      showToast(`${m.user_name} approved ✓`)
     }
-
-    if (status === 'rejected') {
-      const msg = encodeURIComponent(
-        `Hi, your request to join the family Wanderlog was not approved this time. Contact Umer if you think this is a mistake.`
-      )
-      window.open(`https://wa.me/?text=${msg}`, '_blank')
-    }
-
     setLoading(false)
   }
-  async function copyInviteLink(tripId) { const{data}=await supabase.from('trips').select('invite_token').eq('id',tripId).single(); if(data?.invite_token){const l=`${window.location.origin}?join=${data.invite_token}`;try{await navigator.clipboard.writeText(l);setCopyMsg('Copied! Send this to invite someone.')}catch{setCopyMsg(l)}} }
+
+  async function copyInviteLink(tripId) {
+    const{data}=await supabase.from('trips').select('invite_token').eq('id',tripId).single()
+    if(data?.invite_token){
+      const l=`${window.location.origin}?join=${data.invite_token}`
+      try{await navigator.clipboard.writeText(l);setCopyMsg('Copied! Send this link to invite someone.')}
+      catch{setCopyMsg(l)}
+    }
+  }
+
   const pending=members.filter(m=>m.status==='pending'), approved=members.filter(m=>m.status==='approved')
   return (
     <div onClick={e=>e.target===e.currentTarget&&onClose()} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.4)', zIndex:300, display:'flex', alignItems:'flex-end', justifyContent:'center' }}>
@@ -575,7 +518,7 @@ Sign in with Google and you'll see all the trips. Welcome! 🎉`
         {selectedTrip && (<>
           <div style={{ background:'#fafafa', borderRadius:12, padding:'12px 16px', marginBottom:14 }}>
             <div style={{ fontSize:13, fontFamily:'Geist, sans-serif', fontWeight:600, marginBottom:4 }}>Invite link</div>
-            <div style={{ fontSize:12, color:'#999', fontFamily:'Geist, sans-serif', marginBottom:10 }}>Anyone with this link can request to join.</div>
+            <div style={{ fontSize:12, color:'#999', fontFamily:'Geist, sans-serif', marginBottom:10 }}>Share this link to invite family members.</div>
             <button onClick={()=>copyInviteLink(selectedTrip)} style={{ background:'#111', color:'#fff', border:'none', borderRadius:8, padding:'8px 16px', fontSize:12, fontFamily:'Geist, sans-serif', fontWeight:600, cursor:'pointer' }}>Copy invite link</button>
             {copyMsg && <div style={{ marginTop:8, fontSize:12, color:'#7a9e7e', fontFamily:'Geist, sans-serif', wordBreak:'break-all' }}>{copyMsg}</div>}
           </div>
@@ -603,9 +546,9 @@ Sign in with Google and you'll see all the trips. Welcome! 🎉`
 function JoinBanner({ joinState, onClose }) {
   if (!joinState) return null
   const cfg = {
-    pending: { icon:'⏳', title:'Request sent!', sub:`Your request to join has been sent to Umer. You'll get a WhatsApp message once it's approved — usually within a few hours.` },
+    pending: { icon:'⏳', title:'Request sent!', sub:`Your request has been sent to Umer. You'll get a WhatsApp message once approved.` },
     approved: { icon:'✅', title:"You're in!", sub:`Welcome to the family journal! You can now view and post moments.` },
-    rejected: { icon:'❌', title:'Not approved', sub:`Your request wasn't approved. Contact Umer on WhatsApp if you think this is a mistake.` }
+    rejected: { icon:'❌', title:'Not approved', sub:`Contact Umer on WhatsApp if you think this is a mistake.` }
   }
   const c = cfg[joinState.status] ?? cfg.pending
   return (
@@ -620,7 +563,7 @@ function JoinBanner({ joinState, onClose }) {
   )
 }
 
-// ── Privacy Toggle ───────────────────────────────────────────
+// ── Privacy Toggle ────────────────────────────────────────────
 function PrivacyToggle({ tripId, isPrivate, onToggle, dark=false }) {
   const [loading, setLoading] = useState(false)
   async function toggle() {
@@ -632,35 +575,27 @@ function PrivacyToggle({ tripId, isPrivate, onToggle, dark=false }) {
   }
   const textColor = dark ? 'rgba(255,255,255,0.8)' : '#666'
   const trackBg = isPrivate ? (dark ? 'rgba(255,255,255,0.3)' : '#ddd') : (dark ? 'rgba(255,255,255,0.5)' : '#ccc')
-  const thumbBg = dark ? '#fff' : '#fff'
   const trackBorder = dark ? '1px solid rgba(255,255,255,0.3)' : '1px solid #ccc'
   return (
-    <button onClick={toggle} disabled={loading}
-      style={{ background:'none', border:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:7, opacity:loading?0.5:1, padding:0 }}>
-      <span style={{ fontSize:11, fontFamily:'Geist, sans-serif', fontWeight:600, color:textColor, letterSpacing:'0.04em' }}>
-        {isPrivate ? 'Private' : 'Public'}
-      </span>
+    <button onClick={toggle} disabled={loading} style={{ background:'none', border:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:7, opacity:loading?0.5:1, padding:0 }}>
+      <span style={{ fontSize:11, fontFamily:'Geist, sans-serif', fontWeight:600, color:textColor, letterSpacing:'0.04em' }}>{isPrivate?'Private':'Public'}</span>
       <div style={{ width:36, height:20, borderRadius:100, background:trackBg, position:'relative', transition:'background 0.2s', border:trackBorder, flexShrink:0 }}>
-        <div style={{ position:'absolute', top:2, left:isPrivate?16:2, width:14, height:14, borderRadius:'50%', background:thumbBg, transition:'left 0.2s', boxShadow:'0 1px 4px rgba(0,0,0,0.25)' }} />
+        <div style={{ position:'absolute', top:2, left:isPrivate?16:2, width:14, height:14, borderRadius:'50%', background:'#fff', transition:'left 0.2s', boxShadow:'0 1px 4px rgba(0,0,0,0.25)' }} />
       </div>
     </button>
   )
 }
 
-// ── Main Page ─────────────────────────────────────────────────
-// ── Pending Access Page ──────────────────────────────────────
+// ── Access Pages ──────────────────────────────────────────────
 function PendingAccessPage({ onSignOut, user }) {
   const waMsg = encodeURIComponent(`Hi Umer! I signed into Wanderlog with ${user?.email} and I'm waiting for approval 🙏`)
   return (
-    <div style={{ minHeight:'100vh', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'32px 24px', fontFamily:'Geist, sans-serif', textAlign:'center', background:'linear-gradient(135deg, #fef9f0 0%, #fce8e8 20%, #e8f4fc 45%, #f0e8fc 70%, #e8fce8 100%)', backgroundSize:'500% 500%' }}>
+    <div style={{ minHeight:'100vh', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'32px 24px', fontFamily:'Geist, sans-serif', textAlign:'center', background:'linear-gradient(135deg, #fef9f0, #fce8e8, #e8f4fc)' }}>
       <div style={{ fontSize:52, marginBottom:16 }}>⏳</div>
       <div style={{ fontFamily:'Cormorant Garamond, serif', fontStyle:'italic', fontSize:28, color:'#111', marginBottom:8 }}>Waiting for approval</div>
-      <div style={{ fontSize:14, color:'#888', lineHeight:1.7, marginBottom:32, maxWidth:280 }}>
-        Your request is pending. Umer needs to approve you in the Members section before you can access the app.
-      </div>
+      <div style={{ fontSize:14, color:'#888', lineHeight:1.7, marginBottom:32, maxWidth:280 }}>Your request is pending. Umer needs to approve you before you can access the app.</div>
       <a href={`https://wa.me/${ADMIN_WHATSAPP}?text=${waMsg}`} target="_blank" rel="noreferrer"
-        style={{ display:'flex', alignItems:'center', gap:10, background:'#25D366', color:'#fff', borderRadius:12, padding:'13px 24px', fontSize:14, fontWeight:700, textDecoration:'none', marginBottom:12, boxShadow:'0 4px 16px rgba(37,211,102,0.3)' }}>
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+        style={{ display:'flex', alignItems:'center', gap:10, background:'#25D366', color:'#fff', borderRadius:12, padding:'13px 24px', fontSize:14, fontWeight:700, textDecoration:'none', marginBottom:12 }}>
         Nudge Umer on WhatsApp
       </a>
       <button onClick={onSignOut} style={{ background:'none', border:'none', color:'#bbb', fontSize:13, cursor:'pointer', fontFamily:'Geist, sans-serif' }}>Sign out</button>
@@ -668,19 +603,15 @@ function PendingAccessPage({ onSignOut, user }) {
   )
 }
 
-// ── Denied Access Page ────────────────────────────────────────
 function DeniedAccessPage({ onSignOut, user }) {
   const waMsg = encodeURIComponent(`Hi Umer! I tried to access Wanderlog with ${user?.email} but I don't have access. Can you invite me?`)
   return (
     <div style={{ minHeight:'100vh', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'32px 24px', fontFamily:'Geist, sans-serif', textAlign:'center', background:'linear-gradient(135deg, #fef9f0, #fce8e8)' }}>
       <div style={{ fontSize:52, marginBottom:16 }}>🔒</div>
       <div style={{ fontFamily:'Cormorant Garamond, serif', fontStyle:'italic', fontSize:28, color:'#111', marginBottom:8 }}>No access</div>
-      <div style={{ fontSize:14, color:'#888', lineHeight:1.7, marginBottom:32, maxWidth:280 }}>
-        <strong>{user?.email}</strong> doesn't have access to this family journal. You need an invite from Umer.
-      </div>
+      <div style={{ fontSize:14, color:'#888', lineHeight:1.7, marginBottom:32, maxWidth:280 }}><strong>{user?.email}</strong> doesn't have access. You need an invite from Umer.</div>
       <a href={`https://wa.me/${ADMIN_WHATSAPP}?text=${waMsg}`} target="_blank" rel="noreferrer"
-        style={{ display:'flex', alignItems:'center', gap:10, background:'#25D366', color:'#fff', borderRadius:12, padding:'13px 24px', fontSize:14, fontWeight:700, textDecoration:'none', marginBottom:12, boxShadow:'0 4px 16px rgba(37,211,102,0.3)' }}>
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+        style={{ display:'flex', alignItems:'center', gap:10, background:'#25D366', color:'#fff', borderRadius:12, padding:'13px 24px', fontSize:14, fontWeight:700, textDecoration:'none', marginBottom:12 }}>
         Ask Umer for access
       </a>
       <button onClick={onSignOut} style={{ background:'none', border:'none', color:'#bbb', fontSize:13, cursor:'pointer', fontFamily:'Geist, sans-serif' }}>Sign out</button>
@@ -688,68 +619,38 @@ function DeniedAccessPage({ onSignOut, user }) {
   )
 }
 
-// ── Invite Landing Page ──────────────────────────────────────
+// ── Invite Landing Page ───────────────────────────────────────
 function InviteLandingPage({ onSignIn }) {
-  const waMsg = encodeURIComponent(
-    `Hi Umer! I just clicked the Wanderlog invite link and I'm about to sign in. Let me know if you need to approve me 👋`
-  )
-  const waUrl = `https://wa.me/${ADMIN_WHATSAPP}?text=${waMsg}`
-
+  const waMsg = encodeURIComponent(`Hi Umer! I just clicked the Wanderlog invite link and I'm about to sign in. Let me know if you need to approve me 👋`)
   return (
     <div style={{ minHeight:'100vh', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'32px 24px', fontFamily:'Geist, sans-serif', position:'relative', overflow:'hidden' }}>
-      <style>{`
-        @keyframes meshMove { 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
-        @keyframes fadeUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
-      `}</style>
-
-      {/* Background */}
-      <div style={{ position:'fixed', inset:0, zIndex:0, background:'linear-gradient(135deg, #fef9f0 0%, #fce8e8 20%, #e8f4fc 45%, #f0e8fc 70%, #e8fce8 100%)', backgroundSize:'500% 500%', animation:'meshMove 20s ease infinite', pointerEvents:'none' }} />
-
+      <style>{`@keyframes meshMove{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}@keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}`}</style>
+      <div style={{ position:'fixed', inset:0, zIndex:0, background:'linear-gradient(135deg,#fef9f0,#fce8e8,#e8f4fc,#f0e8fc,#e8fce8)', backgroundSize:'500% 500%', animation:'meshMove 20s ease infinite', pointerEvents:'none' }} />
       <div style={{ position:'relative', zIndex:1, maxWidth:340, width:'100%', textAlign:'center' }}>
-
-        {/* Icon */}
         <div style={{ fontSize:56, marginBottom:16, animation:'fadeUp 0.5s ease both' }}>🎉</div>
-
-        {/* Heading */}
-        <div style={{ fontFamily:'Cormorant Garamond, Georgia, serif', fontStyle:'italic', fontSize:32, fontWeight:600, color:'#111', marginBottom:8, animation:'fadeUp 0.5s ease 0.1s both' }}>
-          You're invited!
-        </div>
-        <div style={{ fontSize:14, color:'#888', lineHeight:1.6, marginBottom:36, animation:'fadeUp 0.5s ease 0.2s both' }}>
-          Umer has invited you to join the family's private travel journal on Wanderlog.
-        </div>
-
-        {/* Step 1 — WhatsApp Umer */}
+        <div style={{ fontFamily:'Cormorant Garamond, serif', fontStyle:'italic', fontSize:32, fontWeight:600, color:'#111', marginBottom:8, animation:'fadeUp 0.5s ease 0.1s both' }}>You're invited!</div>
+        <div style={{ fontSize:14, color:'#888', lineHeight:1.6, marginBottom:36, animation:'fadeUp 0.5s ease 0.2s both' }}>Umer has invited you to join the family's private travel journal on Wanderlog.</div>
         <div style={{ background:'rgba(255,255,255,0.85)', borderRadius:20, padding:'20px', marginBottom:12, backdropFilter:'blur(8px)', boxShadow:'0 4px 20px rgba(0,0,0,0.06)', animation:'fadeUp 0.5s ease 0.3s both' }}>
           <div style={{ fontSize:12, fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase', color:'#aaa', marginBottom:12 }}>Step 1</div>
-          <a href={waUrl} target="_blank" rel="noreferrer"
+          <a href={`https://wa.me/${ADMIN_WHATSAPP}?text=${waMsg}`} target="_blank" rel="noreferrer"
             style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:10, background:'#25D366', color:'#fff', borderRadius:12, padding:'14px', fontSize:15, fontWeight:700, textDecoration:'none', boxShadow:'0 4px 16px rgba(37,211,102,0.35)' }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
             Message Umer on WhatsApp
           </a>
-          <div style={{ fontSize:11, color:'#bbb', marginTop:8, fontFamily:'Geist, sans-serif' }}>Let him know you're joining</div>
+          <div style={{ fontSize:11, color:'#bbb', marginTop:8 }}>Let him know you're joining</div>
         </div>
-
-        {/* Step 2 — Sign in */}
         <div style={{ background:'rgba(255,255,255,0.85)', borderRadius:20, padding:'20px', backdropFilter:'blur(8px)', boxShadow:'0 4px 20px rgba(0,0,0,0.06)', animation:'fadeUp 0.5s ease 0.4s both' }}>
           <div style={{ fontSize:12, fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase', color:'#aaa', marginBottom:12 }}>Step 2</div>
-          <button onClick={onSignIn}
-            style={{ width:'100%', background:'#111', color:'#fff', border:'none', borderRadius:12, padding:'14px', fontSize:15, fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:10 }}>
-            <svg width="18" height="18" viewBox="0 0 24 24">
-              <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-              <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-              <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
-              <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-            </svg>
+          <button onClick={onSignIn} style={{ width:'100%', background:'#111', color:'#fff', border:'none', borderRadius:12, padding:'14px', fontSize:15, fontWeight:700, cursor:'pointer' }}>
             Sign in with Google
           </button>
-          <div style={{ fontSize:11, color:'#bbb', marginTop:8, fontFamily:'Geist, sans-serif' }}>Sign in to complete your request</div>
+          <div style={{ fontSize:11, color:'#bbb', marginTop:8 }}>Sign in to complete your request</div>
         </div>
-
       </div>
     </div>
   )
 }
 
+// ── Main Page ─────────────────────────────────────────────────
 export function TimelinePage() {
   const { user, signInWithGoogle, signOut } = useAuth()
   const [trips, setTrips] = useState(DEFAULT_TRIPS)
@@ -768,19 +669,19 @@ export function TimelinePage() {
   const [posting, setPosting] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [galleryFiles, setGalleryFiles] = useState([])
-  const [slideDir, setSlideDir] = useState('none') // 'left' | 'right' | 'none'
+  const [slideDir, setSlideDir] = useState('none')
   const [toast, setToast] = useState('')
 
   const showToast = msg => { setToast(msg); setTimeout(() => setToast(''), 3000) }
+
+  // All hooks must be called unconditionally at the top
+  const access = useAccessControl(user)
   const joinState = useJoinRequest(user, showToast)
 
   useEffect(() => { loadTripCovers(trips, setTrips) }, [])
   useEffect(() => {
-    if (user && Notification.permission === 'default') {
-      setShowNotifPrompt(true)
-    } else if (user && Notification.permission === 'granted') {
-      subscribeToPush(user)
-    }
+    if (user && Notification.permission === 'default') setShowNotifPrompt(true)
+    else if (user && Notification.permission === 'granted') subscribeToPush(user)
   }, [user])
   useEffect(() => { setActiveDay(null) }, [activeSlug])
   useEffect(() => { setSlideDir('none') }, [activeSlug])
@@ -807,15 +708,13 @@ export function TimelinePage() {
   async function handleAddMoment(payload) {
     if (!user) return
     setPosting(true)
+    setShowAddMoment(false)
+    setGalleryFiles([])
+    showToast('Posting… ✨')
     try {
-      // Close modal immediately for snappy feel
-      setShowAddMoment(false)
-      setGalleryFiles([])
-      showToast('Posting… ✨')
       const result = await queueOrPost({ ...payload, userId:user.id, userName:user.user_metadata?.full_name??user.email, userAvatar:user.user_metadata?.avatar_url??null })
       if (!result) showToast('Saved offline — will sync when connected 📶')
-    }
-    catch(e) { showToast('Error: '+e.message) }
+    } catch(e) { showToast('Error: '+e.message) }
     finally { setPosting(false) }
   }
 
@@ -857,85 +756,58 @@ export function TimelinePage() {
 
   const allTabs = [...trips, UPCOMING_TAB]
 
-  // Access control hook — must be called unconditionally
-  const access = useAccessControl(user)
-
-  // Show invite landing screen if join token present and not signed in
+  // ── Conditional renders (after all hooks) ─────────────────
   const pendingJoinToken = localStorage.getItem('wanderlog_join_token')
-  if (!user && !loading && pendingJoinToken) {
-    return <InviteLandingPage onSignIn={signInWithGoogle} />
-  }
 
-  // Show welcome page when signed out
   if (!user && !loading) {
+    if (pendingJoinToken) return <InviteLandingPage onSignIn={signInWithGoogle} />
     return <WelcomePage onSignIn={signInWithGoogle} loading={false} />
   }
 
+  if (!user && loading) {
+    return <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', fontFamily:'Geist, sans-serif', color:'#aaa' }}>Loading…</div>
+  }
+
   if (access === 'loading') {
-    return (
-      <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', fontFamily:'Geist, sans-serif', color:'#aaa', fontSize:14 }}>
-        Checking access…
-      </div>
-    )
+    return <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', fontFamily:'Geist, sans-serif', color:'#aaa' }}>Checking access…</div>
   }
 
-  if (access === 'pending') {
-    return <PendingAccessPage onSignOut={signOut} user={user} />
-  }
-
-  if (access === 'denied') {
-    return <DeniedAccessPage onSignOut={signOut} user={user} />
-  }
+  if (access === 'pending') return <PendingAccessPage onSignOut={signOut} user={user} />
+  if (access === 'denied') return <DeniedAccessPage onSignOut={signOut} user={user} />
 
   return (
     <div style={{ fontFamily:'Geist, Inter, sans-serif', minHeight:'100vh', color:'#111' }}>
       <style>{`
-        @keyframes meshMove { 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
-        * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
-        ::-webkit-scrollbar { display: none; }
-        .fade-in { animation: fadeIn 0.15s ease; }
-        @keyframes fadeIn { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes meshMove{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+        @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes slideInUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes slideOutLeft{from{opacity:1;transform:translateX(0)}to{opacity:0;transform:translateX(-24px)}}
+        @keyframes slideOutRight{from{opacity:1;transform:translateX(0)}to{opacity:0;transform:translateX(24px)}}
+        @keyframes cardIn{from{opacity:0;transform:translateY(20px) scale(0.98)}to{opacity:1;transform:translateY(0) scale(1)}}
+        @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+        @keyframes drawerIn{from{transform:translateX(100%)}to{transform:translateX(0)}}
+        *{-webkit-tap-highlight-color:transparent;box-sizing:border-box}
+        ::-webkit-scrollbar{display:none}
+        .card-in{animation:cardIn 0.35s ease both}
+        .moment-card:active{transform:scale(0.99)}
+        button:active{transform:scale(0.96)}
       `}</style>
 
-      {/* Animated background */}
-      <div style={{ position:'fixed', inset:0, zIndex:0, background:'linear-gradient(135deg, #fef9f0 0%, #fce8e8 20%, #e8f4fc 40%, #f0e8fc 60%, #e8fce8 80%, #fef9f0 100%)', backgroundSize:'500% 500%', animation:'meshMove 20s ease infinite', pointerEvents:'none' }} />
+      <div style={{ position:'fixed', inset:0, zIndex:0, background:'linear-gradient(135deg,#fef9f0,#fce8e8 20%,#e8f4fc 45%,#f0e8fc 70%,#e8fce8)', backgroundSize:'500% 500%', animation:'meshMove 20s ease infinite', pointerEvents:'none' }} />
 
       <div style={{ position:'relative', zIndex:1 }}>
-
         {/* ── Header ── */}
-        <header style={{ position:'sticky', top:0, zIndex:100, background:'rgba(255,255,255,0.75)', backdropFilter:'blur(20px)', WebkitBackdropFilter:'blur(20px)', borderBottom:'1px solid rgba(0,0,0,0.06)' }}>
-          {/* Top bar */}
+        <header style={{ position:'sticky', top:0, zIndex:100, background:'rgba(255,255,255,0.8)', backdropFilter:'blur(20px)', WebkitBackdropFilter:'blur(20px)', borderBottom:'1px solid rgba(0,0,0,0.06)' }}>
           <div style={{ padding:'0 20px', height:52, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-            <div style={{ fontFamily:'Cormorant Garamond, Georgia, serif', fontStyle:'italic', fontSize:22, color:'#111', letterSpacing:'-0.01em', fontWeight:600 }}>wanderlog</div>
-            {user ? (
-              <div style={{ position:'relative' }}>
-                <button onClick={()=>setShowAccountMenu(m=>!m)} style={{ background:'none', border:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:6, padding:'4px 0' }}>
-                  <Avatar src={user.user_metadata?.avatar_url} name={user.email} size={30} />
-                  <span style={{ color:'#aaa', fontSize:10 }}>{showAccountMenu?'▲':'▼'}</span>
-                </button>
-                {showAccountMenu && (<>
-                  <div onClick={()=>setShowAccountMenu(false)} style={{ position:'fixed', inset:0, zIndex:98 }} />
-                  <div style={{ position:'absolute', top:42, right:0, background:'rgba(255,255,255,0.96)', border:'1px solid rgba(0,0,0,0.08)', borderRadius:14, minWidth:180, boxShadow:'0 8px 32px rgba(0,0,0,0.12)', zIndex:99, overflow:'hidden', backdropFilter:'blur(12px)' }}>
-                    <div style={{ padding:'12px 14px', borderBottom:'1px solid #f0f0f0' }}>
-                      <div style={{ fontSize:13, fontFamily:'Geist, sans-serif', fontWeight:600, color:'#111' }}>{user.user_metadata?.full_name??'Traveller'}</div>
-                      <div style={{ fontSize:11, color:'#aaa', marginTop:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{user.email}</div>
-                    </div>
-                    <button onClick={()=>{setShowDocs(true);setShowAccountMenu(false)}} style={{ width:'100%', background:'none', border:'none', padding:'11px 14px', color:'#333', fontFamily:'Geist, sans-serif', fontSize:13, textAlign:'left', cursor:'pointer', borderBottom:'1px solid #f5f5f5' }}>Travel Documents</button>
-                    {user.email===ADMIN_EMAIL && <button onClick={()=>{setShowMembers(true);setShowAccountMenu(false)}} style={{ width:'100%', background:'none', border:'none', padding:'11px 14px', color:'#333', fontFamily:'Geist, sans-serif', fontSize:13, textAlign:'left', cursor:'pointer' }}>Members</button>}
-                    <button onClick={()=>{signOut();setShowAccountMenu(false)}} style={{ width:'100%', background:'none', border:'none', padding:'11px 14px', color:'#e53e3e', fontFamily:'Geist, sans-serif', fontSize:13, textAlign:'left', cursor:'pointer' }}>Sign out</button>
-                  </div>
-                </>)}
-              </div>
-            ) : (
-              <button onClick={signInWithGoogle} style={{ background:'#111', color:'#fff', border:'none', borderRadius:100, padding:'8px 18px', fontSize:13, fontFamily:'Geist, sans-serif', fontWeight:600, cursor:'pointer' }}>Sign in with Google</button>
-            )}
+            <div style={{ fontFamily:'Cormorant Garamond, Georgia, serif', fontStyle:'italic', fontSize:22, color:'#111', fontWeight:600 }}>wanderlog</div>
+            <button onClick={()=>setShowAccountMenu(true)} style={{ background:'none', border:'none', cursor:'pointer', padding:2, borderRadius:'50%' }}>
+              <Avatar src={user.user_metadata?.avatar_url} name={user.email} size={32} />
+            </button>
           </div>
-
-          {/* Tab bar — colorful pills like Config Timeline */}
-          <div className='slide-down' style={{ display:'flex', overflowX:'auto', scrollbarWidth:'none', padding:'0 16px 10px', gap:8 }}>
+          <div style={{ display:'flex', overflowX:'auto', scrollbarWidth:'none', padding:'0 16px 10px', gap:8 }}>
             {allTabs.map((tab, idx) => {
               const isActive = activeSlug === tab.slug
-              const color = tab.slug === 'today' ? '#FF6B6B' : tab.slug === 'upcoming' ? '#8395A7' : dayColor(idx + 1)
+              const color = tab.slug==='today'?'#FF6B6B':tab.slug==='upcoming'?'#8395A7':dayColor(idx+1)
               return (
                 <button key={tab.slug} onClick={()=>setActiveSlug(tab.slug)}
                   style={{ background:isActive?color:`${color}20`, color:isActive?'#fff':color, border:`2px solid ${color}`, borderRadius:100, padding:'6px 16px', fontSize:13, fontFamily:'Geist, sans-serif', fontWeight:700, cursor:'pointer', whiteSpace:'nowrap', flexShrink:0, transition:'all 0.15s', boxShadow:isActive?`0 3px 14px ${color}55`:'none' }}>
@@ -947,211 +819,147 @@ export function TimelinePage() {
           </div>
         </header>
 
-        {/* ── Offline banner ── */}
-        {!isOnline && (
-          <div className='slide-down' style={{ background:'#1a1a1a', color:'#fff', padding:'8px 16px', fontSize:12, fontFamily:'Geist, sans-serif', textAlign:'center', display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
-            <span style={{ width:7, height:7, borderRadius:'50%', background:'#FF6B6B', display:'inline-block', flexShrink:0 }} />
-            You're offline — moments will sync when connected
-            {pendingCount > 0 && <span style={{ background:'rgba(255,255,255,0.15)', borderRadius:100, padding:'1px 8px', fontSize:11 }}>{pendingCount} pending</span>}
-          </div>
-        )}
-        {isOnline && syncing && (
-          <div style={{ background:'#1DD1A1', color:'#fff', padding:'7px 16px', fontSize:12, fontFamily:'Geist, sans-serif', textAlign:'center' }}>
-            ↑ Syncing offline moments…
-          </div>
-        )}
-        {isOnline && !syncing && pendingCount > 0 && (
-          <div style={{ background:'#54A0FF', color:'#fff', padding:'7px 16px', fontSize:12, fontFamily:'Geist, sans-serif', textAlign:'center' }}>
-            ✓ {pendingCount} moment{pendingCount>1?'s':''} synced!
-          </div>
-        )}
+        {/* Offline banner */}
+        {!isOnline && <div style={{ background:'#1a1a1a', color:'#fff', padding:'8px 16px', fontSize:12, fontFamily:'Geist, sans-serif', textAlign:'center', display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}><span style={{ width:7, height:7, borderRadius:'50%', background:'#FF6B6B', display:'inline-block' }} />You're offline — moments will sync when connected{pendingCount>0&&<span style={{ background:'rgba(255,255,255,0.15)', borderRadius:100, padding:'1px 8px', fontSize:11 }}>{pendingCount} pending</span>}</div>}
+        {isOnline&&syncing&&<div style={{ background:'#1DD1A1', color:'#fff', padding:'7px 16px', fontSize:12, fontFamily:'Geist, sans-serif', textAlign:'center' }}>↑ Syncing offline moments…</div>}
 
-        {/* ── Upcoming ── */}
-        {activeSlug === 'upcoming' && (
+        {/* Upcoming */}
+        {activeSlug==='upcoming'&&(
           <div style={{ maxWidth:560, margin:'0 auto', padding:'52px 20px', textAlign:'center' }}>
             <div style={{ fontSize:48, marginBottom:12 }}>🗺️</div>
             <div style={{ fontFamily:'Cormorant Garamond, serif', fontStyle:'italic', fontSize:26, marginBottom:8 }}>More trips coming</div>
             <div style={{ fontSize:14, color:'#888', fontFamily:'Geist, sans-serif', marginBottom:32 }}>Future adventures will appear here.</div>
-            {user && <button onClick={()=>setShowAddTrip(true)} style={{ background:'#111', color:'#fff', border:'none', borderRadius:12, padding:'12px 28px', fontSize:14, fontFamily:'Geist, sans-serif', fontWeight:600, cursor:'pointer' }}>+ Add a trip</button>}
+            <button onClick={()=>setShowAddTrip(true)} style={{ background:'#111', color:'#fff', border:'none', borderRadius:12, padding:'12px 28px', fontSize:14, fontFamily:'Geist, sans-serif', fontWeight:600, cursor:'pointer' }}>+ Add a trip</button>
           </div>
         )}
 
-        {/* ── Feed ── */}
-        {activeSlug !== 'upcoming' && (
-          <div style={{ maxWidth:560, margin:'0 auto', padding:'0 14px 100px',
-              animation: slideDir==='left' ? 'slideOutLeft 0.18s ease forwards' : slideDir==='right' ? 'slideOutRight 0.18s ease forwards' : 'slideInUp 0.22s ease both' }}
-            onTouchStart={e=>{window._swX=e.touches[0].clientX; window._swY=e.touches[0].clientY}}
+        {/* Feed */}
+        {activeSlug!=='upcoming'&&(
+          <div style={{ maxWidth:560, margin:'0 auto', padding:'0 14px 100px', animation:slideDir==='left'?'slideOutLeft 0.18s ease forwards':slideDir==='right'?'slideOutRight 0.18s ease forwards':'slideInUp 0.22s ease both' }}
+            onTouchStart={e=>{window._swX=e.touches[0].clientX;window._swY=e.touches[0].clientY}}
             onTouchEnd={e=>{
               const dx=window._swX-e.changedTouches[0].clientX
               const dy=Math.abs(window._swY-e.changedTouches[0].clientY)
-              if(Math.abs(dx)<60||dy>40) return // ignore vertical scrolls
+              if(Math.abs(dx)<60||dy>40)return
               const slugs=[...trips.map(t=>t.slug),'upcoming']
               const idx=slugs.indexOf(activeSlug)
-              if(dx>60&&idx<slugs.length-1){ setSlideDir('left'); setTimeout(()=>{setActiveSlug(slugs[idx+1]);setSlideDir('none')},180) }
-              if(dx<-60&&idx>0){ setSlideDir('right'); setTimeout(()=>{setActiveSlug(slugs[idx-1]);setSlideDir('none')},180) }
+              if(dx>60&&idx<slugs.length-1){setSlideDir('left');setTimeout(()=>{setActiveSlug(slugs[idx+1]);setSlideDir('none')},180)}
+              if(dx<-60&&idx>0){setSlideDir('right');setTimeout(()=>{setActiveSlug(slugs[idx-1]);setSlideDir('none')},180)}
             }}>
 
             {/* Trip hero */}
-            {activeSlug === 'today' ? (
-              <div className='fade-up' style={{ padding:'20px 0 12px', borderBottom:'1px solid rgba(0,0,0,0.06)' }}>
+            {activeSlug==='today'?(
+              <div style={{ padding:'20px 0 12px', borderBottom:'1px solid rgba(0,0,0,0.06)' }}>
                 <div style={{ fontSize:11, color:'#aaa', fontFamily:'Geist, sans-serif', letterSpacing:'0.1em', textTransform:'uppercase' }}>{format(new Date(),'EEEE, MMMM d')}</div>
                 <div style={{ fontFamily:'Cormorant Garamond, serif', fontStyle:'italic', fontSize:28, color:'#111', marginTop:2 }}>Today's Moments</div>
               </div>
-            ) : activeTrip?.cover ? (
+            ):activeTrip?.cover?(
               <div style={{ position:'relative', height:180, overflow:'hidden', margin:'0 -14px', borderBottom:'1px solid rgba(0,0,0,0.06)' }}>
                 <img src={activeTrip.cover} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
-                <div style={{ position:'absolute', inset:0, background:'linear-gradient(to bottom, transparent 30%, rgba(0,0,0,0.65))' }} />
+                <div style={{ position:'absolute', inset:0, background:'linear-gradient(to bottom,transparent 30%,rgba(0,0,0,0.65))' }} />
                 <div style={{ position:'absolute', bottom:0, left:0, right:0, padding:'14px 18px', display:'flex', alignItems:'flex-end', justifyContent:'space-between' }}>
                   <div>
                     <div style={{ fontFamily:'Cormorant Garamond, serif', fontStyle:'italic', fontSize:24, color:'#fff' }}>{activeTrip.emoji} {activeTrip.label}</div>
                     <div style={{ fontSize:11, color:'rgba(255,255,255,0.5)', fontFamily:'Geist, sans-serif' }}>{visibleMoments.length} moments</div>
                   </div>
-                  {user && (
-                    <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-                      <PrivacyToggle tripId={activeTrip.id} isPrivate={activeTrip.isPrivate} onToggle={priv=>setTrips(ts=>ts.map(t=>t.id===activeTrip.id?{...t,isPrivate:priv}:t))} dark={true} />
-                      <label style={{ background:'rgba(255,255,255,0.15)', border:'1px solid rgba(255,255,255,0.25)', borderRadius:8, padding:'6px 12px', fontSize:11, fontFamily:'Geist, sans-serif', color:'#fff', cursor:'pointer', backdropFilter:'blur(8px)' }}>Change cover<input type="file" accept="image/*" style={{ display:'none' }} onChange={e=>handleCoverUpload(e,activeSlug)} /></label>
-                    </div>
-                  )}
+                  {user&&<div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                    <PrivacyToggle tripId={activeTrip.id} isPrivate={activeTrip.isPrivate} onToggle={priv=>setTrips(ts=>ts.map(t=>t.id===activeTrip.id?{...t,isPrivate:priv}:t))} dark={true} />
+                    <label style={{ background:'rgba(255,255,255,0.15)', border:'1px solid rgba(255,255,255,0.25)', borderRadius:8, padding:'6px 12px', fontSize:11, fontFamily:'Geist, sans-serif', color:'#fff', cursor:'pointer' }}>Change cover<input type="file" accept="image/*" style={{ display:'none' }} onChange={e=>handleCoverUpload(e,activeSlug)} /></label>
+                  </div>}
                 </div>
               </div>
-            ) : (
+            ):(
               <div style={{ padding:'20px 0 12px', borderBottom:'1px solid rgba(0,0,0,0.06)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
                 <div style={{ fontFamily:'Cormorant Garamond, serif', fontStyle:'italic', fontSize:26, color:'#111' }}>{activeTrip?.emoji} {activeTrip?.label}</div>
-                {user && (
-                  <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-                    <PrivacyToggle tripId={activeTrip.id} isPrivate={activeTrip.isPrivate} onToggle={priv=>setTrips(ts=>ts.map(t=>t.id===activeTrip.id?{...t,isPrivate:priv}:t))} />
-                    <label style={{ background:'#f5f5f5', border:'1px solid #e8e8e8', borderRadius:8, padding:'6px 12px', fontSize:11, fontFamily:'Geist, sans-serif', color:'#888', cursor:'pointer' }}>Add cover<input type="file" accept="image/*" style={{ display:'none' }} onChange={e=>handleCoverUpload(e,activeSlug)} /></label>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Swipe hint — shown briefly */}
-            {visibleMoments.length > 0 && days.length > 1 && (
-              <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:6, padding:'8px 0 0', opacity:0.4 }}>
-                <span style={{ fontSize:10, fontFamily:'Geist, sans-serif', color:'#888', letterSpacing:'0.05em' }}>← swipe to change trip →</span>
+                {user&&<div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                  <PrivacyToggle tripId={activeTrip.id} isPrivate={activeTrip.isPrivate} onToggle={priv=>setTrips(ts=>ts.map(t=>t.id===activeTrip.id?{...t,isPrivate:priv}:t))} />
+                  <label style={{ background:'#f5f5f5', border:'1px solid #e8e8e8', borderRadius:8, padding:'6px 12px', fontSize:11, fontFamily:'Geist, sans-serif', color:'#888', cursor:'pointer' }}>Add cover<input type="file" accept="image/*" style={{ display:'none' }} onChange={e=>handleCoverUpload(e,activeSlug)} /></label>
+                </div>}
               </div>
             )}
 
             {/* Day pills */}
-            {days.length > 0 && (
-              <div className='fade-up' style={{ display:'flex', gap:8, padding:'12px 0 4px', overflowX:'auto', scrollbarWidth:'none' }}>
-                {days.map((day, idx) => {
-                  const color = dayColor(idx)
-                  const isActive = activeDay === day
-                  return (
-                    <button key={day} onClick={()=>setActiveDay(activeDay===day?null:day)}
-                      style={{ background:isActive?color:`${color}20`, color:isActive?'#fff':color, border:`2px solid ${color}`, borderRadius:100, padding:'5px 14px', fontSize:12, fontFamily:'Geist, sans-serif', fontWeight:700, cursor:'pointer', whiteSpace:'nowrap', flexShrink:0, transition:'all 0.15s', boxShadow:isActive?`0 2px 10px ${color}55`:'none' }}>
-                      {day} <span style={{ background:isActive?'rgba(255,255,255,0.25)':`${color}30`, borderRadius:100, padding:'1px 6px', fontSize:10, fontWeight:800, marginLeft:2 }}>{grouped[day]?.length}</span>
-                    </button>
-                  )
+            {days.length>0&&(
+              <div style={{ display:'flex', gap:8, padding:'12px 0 4px', overflowX:'auto', scrollbarWidth:'none' }}>
+                {days.map((day,idx)=>{
+                  const color=dayColor(idx), isActive=activeDay===day
+                  return <button key={day} onClick={()=>setActiveDay(activeDay===day?null:day)}
+                    style={{ background:isActive?color:`${color}20`, color:isActive?'#fff':color, border:`2px solid ${color}`, borderRadius:100, padding:'5px 14px', fontSize:12, fontFamily:'Geist, sans-serif', fontWeight:700, cursor:'pointer', whiteSpace:'nowrap', flexShrink:0, transition:'all 0.15s', boxShadow:isActive?`0 2px 10px ${color}55`:'none' }}>
+                    {day} <span style={{ background:isActive?'rgba(255,255,255,0.25)':`${color}30`, borderRadius:100, padding:'1px 6px', fontSize:10, fontWeight:800, marginLeft:2 }}>{grouped[day]?.length}</span>
+                  </button>
                 })}
-                {activeSlug !== 'today' && visibleMoments.length > 0 && (
-                  <button onClick={()=>setShowTripBook(true)} style={{ background:'rgba(0,0,0,0.06)', border:'1.5px solid rgba(0,0,0,0.1)', borderRadius:100, padding:'5px 14px', fontSize:12, fontFamily:'Geist, sans-serif', fontWeight:600, cursor:'pointer', whiteSpace:'nowrap', color:'#555', flexShrink:0, marginLeft:4 }}>Trip book</button>
-                )}
-              </div>
-            )}
-
-            {/* Privacy gate */}
-            {activeTrip && activeTrip.isPrivate && !user && (
-              <div style={{ textAlign:'center', padding:'60px 20px' }}>
-                <div style={{ fontSize:44, marginBottom:12 }}>🔒</div>
-                <div style={{ fontFamily:'Cormorant Garamond, serif', fontStyle:'italic', fontSize:22, marginBottom:8 }}>This trip is private</div>
-                <div style={{ fontSize:13, color:'#aaa', fontFamily:'Geist, sans-serif', marginBottom:20 }}>Sign in to view this trip.</div>
-                <button onClick={signInWithGoogle} style={{ background:'#111', color:'#fff', border:'none', borderRadius:12, padding:'11px 28px', fontSize:14, fontFamily:'Geist, sans-serif', fontWeight:600, cursor:'pointer' }}>Sign in with Google</button>
+                {activeSlug!=='today'&&visibleMoments.length>0&&<button onClick={()=>setShowTripBook(true)} style={{ background:'rgba(0,0,0,0.06)', border:'1.5px solid rgba(0,0,0,0.1)', borderRadius:100, padding:'5px 14px', fontSize:12, fontFamily:'Geist, sans-serif', fontWeight:600, cursor:'pointer', whiteSpace:'nowrap', color:'#555', flexShrink:0, marginLeft:4 }}>Trip book</button>}
               </div>
             )}
 
             {/* Moments */}
-            {!(activeTrip && activeTrip.isPrivate && !user) && (loading ? (
+            {loading?(
               <div style={{ textAlign:'center', padding:'60px 0', color:'#bbb', fontFamily:'Geist, sans-serif', fontStyle:'italic' }}>Loading…</div>
-            ) : visibleMoments.length === 0 ? (
-              <div className='fade-up' style={{ textAlign:'center', padding:'60px 20px' }}>
+            ):visibleMoments.length===0?(
+              <div style={{ textAlign:'center', padding:'60px 20px' }}>
                 <div style={{ fontSize:44, marginBottom:12, animation:'float 3s ease-in-out infinite' }}>{activeTrip?.emoji??'✈️'}</div>
                 <div style={{ fontFamily:'Cormorant Garamond, serif', fontStyle:'italic', fontSize:22, marginBottom:6 }}>{activeSlug==='today'?'Nothing yet today':'No moments yet'}</div>
                 <div style={{ fontSize:13, color:'#aaa', fontFamily:'Geist, sans-serif' }}>Tap the camera to post your first moment</div>
-
               </div>
-            ) : (
-              visibleDays.map((day, idx) => {
-                const color = dayColor(activeDay ? days.indexOf(day) : idx)
+            ):(
+              visibleDays.map((day,idx)=>{
+                const color=dayColor(activeDay?days.indexOf(day):idx)
                 return (
-                  <div key={day} className='fade-up' style={{ animationDelay:`${idx * 0.1}s` }}>
+                  <div key={day}>
                     <div style={{ display:'flex', alignItems:'center', gap:10, padding:'18px 0 10px' }}>
                       <div style={{ width:38, height:38, borderRadius:'50%', background:color, color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontFamily:'Geist, sans-serif', fontWeight:800, fontSize:14, flexShrink:0, boxShadow:`0 2px 8px ${color}55` }}>{day.split(' ')[1]}</div>
                       <div style={{ fontFamily:'Cormorant Garamond, serif', fontStyle:'italic', fontSize:20, color:'#111', fontWeight:600 }}>{day}</div>
                       <div style={{ flex:1, height:1, background:'rgba(0,0,0,0.06)' }} />
                       <button onClick={()=>setRecapDay(day)} style={{ background:`${color}18`, color, border:`1.5px solid ${color}44`, borderRadius:100, padding:'3px 12px', fontSize:11, fontFamily:'Geist, sans-serif', fontWeight:700, cursor:'pointer' }}>Recap</button>
                     </div>
-                    {grouped[day].map((m, cardIdx) => <MomentCard key={m.id} moment={m} user={user} onReact={handleReact} onMenuOpen={setMenuMoment} cardIdx={cardIdx} />)}
+                    {grouped[day].map((m,cardIdx)=><MomentCard key={m.id} moment={m} user={user} onReact={handleReact} onMenuOpen={setMenuMoment} cardIdx={cardIdx} />)}
                   </div>
                 )
               })
-            ))}
+            )}
           </div>
         )}
 
-        {/* ── FABs ── */}
-        {user && activeSlug !== 'upcoming' && (
+        {/* FABs */}
+        {user&&activeSlug!=='upcoming'&&(
           <div style={{ position:'fixed', bottom:32, right:22, zIndex:200, display:'flex', flexDirection:'column', alignItems:'center', gap:10 }}>
-            <label style={{ width:42, height:42, borderRadius:'50%', background:'rgba(13,13,13,0.85)', border:'1.5px solid rgba(245,200,66,0.35)', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', boxShadow:'0 2px 14px rgba(0,0,0,0.2)', backdropFilter:'blur(8px)', transition:'transform 0.15s, box-shadow 0.15s' }} onMouseEnter={e=>e.currentTarget.style.transform='scale(1.08)'} onMouseLeave={e=>e.currentTarget.style.transform='scale(1)'}>
+            <label style={{ width:42, height:42, borderRadius:'50%', background:'rgba(13,13,13,0.85)', border:'1.5px solid rgba(245,200,66,0.35)', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', boxShadow:'0 2px 14px rgba(0,0,0,0.2)', backdropFilter:'blur(8px)' }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#F5C842" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5" fill="#F5C842" stroke="none"/><polyline points="21 15 16 10 5 21"/></svg>
               <input type="file" multiple accept="image/*,video/*" style={{ display:'none' }} onChange={e=>{const p=Array.from(e.target.files);if(!p.length)return;setGalleryFiles(p);setShowAddMoment(true)}} />
             </label>
-            <label style={{ width:58, height:58, borderRadius:'50%', background:'rgba(13,13,13,0.9)', border:'2px solid #F5C842', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', boxShadow:`0 4px 24px rgba(0,0,0,0.3), 0 0 0 5px rgba(245,248,240,0.9)`, backdropFilter:'blur(8px)', transition:'transform 0.15s, box-shadow 0.15s' }} onMouseEnter={e=>e.currentTarget.style.transform='scale(1.08)'} onMouseLeave={e=>e.currentTarget.style.transform='scale(1)'}>
+            <label style={{ width:58, height:58, borderRadius:'50%', background:'rgba(13,13,13,0.9)', border:'2px solid #F5C842', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', boxShadow:'0 4px 24px rgba(0,0,0,0.3), 0 0 0 5px rgba(245,248,240,0.9)', backdropFilter:'blur(8px)' }}>
               <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#F5C842" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
               <input type="file" accept="image/*,video/*" capture="environment" style={{ display:'none' }} onChange={e=>{const p=Array.from(e.target.files);if(!p.length)return;setGalleryFiles(p);setShowAddMoment(true)}} />
             </label>
           </div>
         )}
 
-        {/* ── Profile side drawer (X-style) ── */}
-        {showAccountMenu && (
+        {/* X-style side drawer */}
+        {showAccountMenu&&(
           <>
-            {/* Backdrop */}
-            <div
-              onClick={()=>setShowAccountMenu(false)}
-              style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.35)', zIndex:400, backdropFilter:'blur(2px)', animation:'fadeIn 0.2s ease' }}
-            />
-            {/* Drawer — slides in from right */}
+            <div onClick={()=>setShowAccountMenu(false)} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.35)', zIndex:400, backdropFilter:'blur(2px)' }} />
             <div style={{ position:'fixed', top:0, right:0, bottom:0, width:280, background:'#fff', zIndex:401, boxShadow:'-8px 0 40px rgba(0,0,0,0.15)', display:'flex', flexDirection:'column', animation:'drawerIn 0.25s cubic-bezier(0.32,0.72,0,1) both' }}>
-              <style>{`@keyframes drawerIn { from{transform:translateX(100%)} to{transform:translateX(0)} }`}</style>
-
-              {/* Profile section */}
               <div style={{ padding:'52px 20px 20px', borderBottom:'1px solid #f0f0f0' }}>
                 <div style={{ width:56, height:56, borderRadius:'50%', overflow:'hidden', marginBottom:12, border:'2px solid #f0f0f0' }}>
                   <Avatar src={user.user_metadata?.avatar_url} name={user.email} size={56} />
                 </div>
-                <div style={{ fontFamily:'Geist, sans-serif', fontWeight:700, fontSize:16, color:'#111', marginBottom:2 }}>
-                  {user.user_metadata?.full_name ?? 'Traveller'}
-                </div>
-                <div style={{ fontFamily:'Geist, sans-serif', fontSize:12, color:'#aaa', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                  {user.email}
-                </div>
+                <div style={{ fontFamily:'Geist, sans-serif', fontWeight:700, fontSize:16, color:'#111', marginBottom:2 }}>{user.user_metadata?.full_name??'Traveller'}</div>
+                <div style={{ fontFamily:'Geist, sans-serif', fontSize:12, color:'#aaa', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{user.email}</div>
               </div>
-
-              {/* Menu items */}
               <div style={{ flex:1, overflowY:'auto' }}>
                 {[
                   { label:'Travel Documents', icon:'🗂️', action:()=>{setShowDocs(true);setShowAccountMenu(false)} },
-                  ...(user.email===ADMIN_EMAIL ? [{ label:'Trip Members', icon:'👥', action:()=>{setShowMembers(true);setShowAccountMenu(false)} }] : []),
-                ].map(item => (
+                  ...(user.email===ADMIN_EMAIL?[{ label:'Trip Members', icon:'👥', action:()=>{setShowMembers(true);setShowAccountMenu(false)} }]:[]),
+                ].map(item=>(
                   <button key={item.label} onClick={item.action}
-                    style={{ width:'100%', background:'none', border:'none', borderBottom:'1px solid #f8f8f8', padding:'16px 20px', display:'flex', alignItems:'center', gap:14, cursor:'pointer', fontFamily:'Geist, sans-serif', fontSize:14, color:'#111', textAlign:'left', transition:'background 0.1s' }}
-                    onMouseEnter={e=>e.currentTarget.style.background='#fafafa'}
-                    onMouseLeave={e=>e.currentTarget.style.background='none'}>
-                    <span style={{ fontSize:20, width:28, textAlign:'center' }}>{item.icon}</span>
-                    {item.label}
+                    style={{ width:'100%', background:'none', border:'none', borderBottom:'1px solid #f8f8f8', padding:'16px 20px', display:'flex', alignItems:'center', gap:14, cursor:'pointer', fontFamily:'Geist, sans-serif', fontSize:14, color:'#111', textAlign:'left' }}>
+                    <span style={{ fontSize:20, width:28, textAlign:'center' }}>{item.icon}</span>{item.label}
                   </button>
                 ))}
               </div>
-
-              {/* Sign out at bottom */}
               <div style={{ padding:'16px 20px', borderTop:'1px solid #f0f0f0' }}>
                 <button onClick={()=>{signOut();setShowAccountMenu(false)}}
-                  style={{ width:'100%', background:'#fff5f5', border:'1px solid #ffe0e0', borderRadius:12, padding:'12px', fontFamily:'Geist, sans-serif', fontSize:14, fontWeight:600, color:'#e53e3e', cursor:'pointer', transition:'background 0.15s' }}
-                  onMouseEnter={e=>e.currentTarget.style.background='#ffe8e8'}
-                  onMouseLeave={e=>e.currentTarget.style.background='#fff5f5'}>
+                  style={{ width:'100%', background:'#fff5f5', border:'1px solid #ffe0e0', borderRadius:12, padding:'12px', fontFamily:'Geist, sans-serif', fontSize:14, fontWeight:600, color:'#e53e3e', cursor:'pointer' }}>
                   Sign out
                 </button>
               </div>
@@ -1159,32 +967,31 @@ export function TimelinePage() {
           </>
         )}
 
-        {/* ── Notification prompt ── */}
-        {showNotifPrompt && (
+        {/* Notification prompt */}
+        {showNotifPrompt&&(
           <div style={{ position:'fixed', bottom:100, left:'50%', transform:'translateX(-50%)', background:'#fff', borderRadius:16, padding:'16px 20px', boxShadow:'0 8px 32px rgba(0,0,0,0.15)', zIndex:300, maxWidth:320, width:'calc(100% - 32px)' }}>
             <div style={{ fontFamily:'Geist, sans-serif', fontWeight:600, fontSize:14, color:'#111', marginBottom:4 }}>🔔 Stay in the loop</div>
             <div style={{ fontFamily:'Geist, sans-serif', fontSize:13, color:'#888', marginBottom:14 }}>Get notified when family members post new moments.</div>
             <div style={{ display:'flex', gap:8 }}>
               <button onClick={()=>setShowNotifPrompt(false)} style={{ flex:1, background:'#f5f5f5', border:'none', borderRadius:10, padding:'10px', fontSize:13, fontFamily:'Geist, sans-serif', cursor:'pointer', color:'#888' }}>Not now</button>
-              <button onClick={()=>{ subscribeToPush(user); setShowNotifPrompt(false) }} style={{ flex:2, background:'#111', color:'#fff', border:'none', borderRadius:10, padding:'10px', fontSize:13, fontFamily:'Geist, sans-serif', fontWeight:600, cursor:'pointer' }}>Enable notifications</button>
+              <button onClick={()=>{subscribeToPush(user);setShowNotifPrompt(false)}} style={{ flex:2, background:'#111', color:'#fff', border:'none', borderRadius:10, padding:'10px', fontSize:13, fontFamily:'Geist, sans-serif', fontWeight:600, cursor:'pointer' }}>Enable notifications</button>
             </div>
           </div>
         )}
 
-        {/* ── Modals ── */}
-        {showAddMoment && <AddMomentModal onClose={()=>{setShowAddMoment(false);setGalleryFiles([])}} onAdd={handleAddMoment} loading={posting} initialFiles={galleryFiles} key={galleryFiles.length+'-'+showAddMoment} />}
-        {showAddTrip && <AddTripModal onClose={()=>setShowAddTrip(false)} onAdd={handleAddTrip} />}
-        {showMembers && <MembersPanel trips={trips} user={user} onClose={()=>setShowMembers(false)} />}
-        {menuMoment && <MomentMenu moment={menuMoment} user={user} onDelete={m=>{setMenuMoment(null);setDeleteMoment(m)}} onClose={()=>setMenuMoment(null)} />}
-        {deleteMoment && <DeleteConfirmModal onClose={()=>setDeleteMoment(null)} onConfirm={handleDelete} loading={deleting} />}
-        {recapDay && <DayRecap day={recapDay} moments={grouped[recapDay]??[]} tripName={activeTrip?.label??'Trip'} tripEmoji={activeTrip?.emoji??'✈️'} onClose={()=>setRecapDay(null)} />}
-        {showTripBook && <TripBook moments={visibleMoments} tripName={activeTrip?.label??'Trip'} tripEmoji={activeTrip?.emoji??'✈️'} onClose={()=>setShowTripBook(false)} />}
-        {joinState && <JoinBanner joinState={joinState} onClose={()=>window.location.reload()} />}
-        {showDocs && <TravelDocs user={user} onClose={()=>setShowDocs(false)} />}
+        {/* Modals */}
+        {showAddMoment&&<AddMomentModal onClose={()=>{setShowAddMoment(false);setGalleryFiles([])}} onAdd={handleAddMoment} loading={posting} initialFiles={galleryFiles} key={galleryFiles.length+'-'+showAddMoment} />}
+        {showAddTrip&&<AddTripModal onClose={()=>setShowAddTrip(false)} onAdd={handleAddTrip} />}
+        {showMembers&&<MembersPanel trips={trips} user={user} onClose={()=>setShowMembers(false)} showToast={showToast} />}
+        {menuMoment&&<MomentMenu moment={menuMoment} user={user} onDelete={m=>{setMenuMoment(null);setDeleteMoment(m)}} onClose={()=>setMenuMoment(null)} />}
+        {deleteMoment&&<DeleteConfirmModal onClose={()=>setDeleteMoment(null)} onConfirm={handleDelete} loading={deleting} />}
+        {recapDay&&<DayRecap day={recapDay} moments={grouped[recapDay]??[]} tripName={activeTrip?.label??'Trip'} tripEmoji={activeTrip?.emoji??'✈️'} onClose={()=>setRecapDay(null)} />}
+        {showTripBook&&<TripBook moments={visibleMoments} tripName={activeTrip?.label??'Trip'} tripEmoji={activeTrip?.emoji??'✈️'} onClose={()=>setShowTripBook(false)} />}
+        {joinState&&<JoinBanner joinState={joinState} onClose={()=>window.location.reload()} />}
+        {showDocs&&<TravelDocs user={user} onClose={()=>setShowDocs(false)} />}
 
-        {/* ── Toast ── */}
-        {toast && <div style={{ position:'fixed', top:66, left:'50%', transform:'translateX(-50%)', background:'rgba(13,13,13,0.9)', color:'#fff', padding:'10px 20px', borderRadius:100, fontSize:13, fontFamily:'Geist, sans-serif', fontWeight:500, zIndex:500, whiteSpace:'nowrap', boxShadow:'0 4px 20px rgba(0,0,0,0.2)', backdropFilter:'blur(8px)' }}>{toast}</div>}
-
+        {/* Toast */}
+        {toast&&<div style={{ position:'fixed', top:66, left:'50%', transform:'translateX(-50%)', background:'rgba(13,13,13,0.9)', color:'#fff', padding:'10px 20px', borderRadius:100, fontSize:13, fontFamily:'Geist, sans-serif', fontWeight:500, zIndex:500, whiteSpace:'nowrap', boxShadow:'0 4px 20px rgba(0,0,0,0.2)', backdropFilter:'blur(8px)' }}>{toast}</div>}
       </div>
     </div>
   )
