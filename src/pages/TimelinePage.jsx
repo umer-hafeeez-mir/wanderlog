@@ -525,13 +525,32 @@ function MembersPanel({ trips, user, onClose, showToast }) {
             <button onClick={()=>copyInviteLink(selectedTrip)} style={{ background:'#111', color:'#fff', border:'none', borderRadius:8, padding:'8px 16px', fontSize:12, fontFamily:'Geist, sans-serif', fontWeight:600, cursor:'pointer' }}>Copy invite link</button>
             {copyMsg && <div style={{ marginTop:8, fontSize:12, color:'#7a9e7e', fontFamily:'Geist, sans-serif', wordBreak:'break-all' }}>{copyMsg}</div>}
           </div>
-          {pending.length > 0 && <><div style={{ fontSize:11, fontFamily:'Geist, sans-serif', fontWeight:600, letterSpacing:'0.08em', textTransform:'uppercase', color:'#999', marginBottom:8 }}>Pending ({pending.length})</div>
-          {pending.map(m => <div key={m.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 0', borderBottom:'1px solid #f0f0f0' }}>
-            <Avatar src={m.user_avatar} name={m.user_name} size={36} />
-            <div style={{ flex:1 }}><div style={{ fontSize:13, fontFamily:'Geist, sans-serif', fontWeight:600 }}>{m.user_name}</div><div style={{ fontSize:11, color:'#999', fontFamily:'Geist, sans-serif' }}>{m.user_email}</div></div>
-            <button onClick={()=>updateStatus(m.id,'approved')} disabled={loading} style={{ background:'#e8f5e0', color:'#7a9e7e', border:'1px solid #c8e6c9', borderRadius:8, padding:'6px 12px', fontSize:12, fontFamily:'Geist, sans-serif', fontWeight:600, cursor:'pointer', marginRight:4 }}>Approve</button>
-            <button onClick={()=>updateStatus(m.id,'rejected')} disabled={loading} style={{ background:'#fff0f0', color:'#e53e3e', border:'1px solid #ffcdd2', borderRadius:8, padding:'6px 12px', fontSize:12, fontFamily:'Geist, sans-serif', fontWeight:600, cursor:'pointer' }}>Reject</button>
-          </div>)}</>}
+          {pending.length > 0 && <>
+            <div style={{ background:'#fff8e0', border:'1px solid #ffe082', borderRadius:12, padding:'10px 14px', marginBottom:12, fontSize:13, fontFamily:'Geist, sans-serif', color:'#b8860b', fontWeight:600 }}>
+              ⏳ {pending.length} request{pending.length>1?'s':''} waiting for your approval
+            </div>
+            {pending.map(m => (
+              <div key={m.id} style={{ background:'#fafafa', borderRadius:14, padding:'14px', marginBottom:10, border:'1px solid #f0f0f0' }}>
+                <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:12 }}>
+                  <Avatar src={m.user_avatar} name={m.user_name} size={40} />
+                  <div>
+                    <div style={{ fontSize:14, fontFamily:'Geist, sans-serif', fontWeight:700, color:'#111' }}>{m.user_name}</div>
+                    <div style={{ fontSize:12, color:'#999', fontFamily:'Geist, sans-serif' }}>{m.user_email}</div>
+                  </div>
+                </div>
+                <div style={{ display:'flex', gap:8 }}>
+                  <button onClick={()=>updateStatus(m.id,'approved')} disabled={loading}
+                    style={{ flex:2, background:'#111', color:'#fff', border:'none', borderRadius:10, padding:'12px', fontSize:14, fontFamily:'Geist, sans-serif', fontWeight:700, cursor:'pointer' }}>
+                    ✓ Approve
+                  </button>
+                  <button onClick={()=>updateStatus(m.id,'rejected')} disabled={loading}
+                    style={{ flex:1, background:'#fff0f0', color:'#e53e3e', border:'1px solid #ffcdd2', borderRadius:10, padding:'12px', fontSize:13, fontFamily:'Geist, sans-serif', fontWeight:600, cursor:'pointer' }}>
+                    Reject
+                  </button>
+                </div>
+              </div>
+            ))}
+          </>}
           {approved.length > 0 && <><div style={{ fontSize:11, fontFamily:'Geist, sans-serif', fontWeight:600, letterSpacing:'0.08em', textTransform:'uppercase', color:'#999', margin:'14px 0 8px' }}>Members ({approved.length})</div>
           {approved.map(m => <div key={m.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 0', borderBottom:'1px solid #f0f0f0' }}>
             <Avatar src={m.user_avatar} name={m.user_name} size={36} />
@@ -624,10 +643,8 @@ function DeniedAccessPage({ onSignOut, user }) {
 
 // ── Invite Landing Page ───────────────────────────────────────
 function InviteLandingPage({ onSignIn }) {
-  const waMsg = encodeURIComponent(`Hi Umer! I just clicked the Wanderlog invite link and signed in with Google. Please approve my request so I can access the family journal 🙏
-
-Approve me here: https://wanderlog-one.vercel.app
-(Open the app → tap your profile photo → Members → Approve)`)
+  const waMsg = encodeURIComponent(`Hi Umer! I just clicked the Wanderlog invite link. I'm signing in now — tap this link to approve me when ready:
+https://wanderlog-one.vercel.app?approve=true`)
   return (
     <div style={{ minHeight:'100vh', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'32px 24px', fontFamily:'Geist, sans-serif', position:'relative', overflow:'hidden' }}>
       <style>{`@keyframes meshMove{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}@keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}`}</style>
@@ -685,6 +702,17 @@ export function TimelinePage() {
   const joinState = useJoinRequest(user, showToast)
 
   useEffect(() => { loadTripCovers(trips, setTrips) }, [])
+
+  // Deep link: ?approve=true opens Members panel directly
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search)
+      if (params.get('approve') === 'true' && user?.email === ADMIN_EMAIL) {
+        setShowMembers(true)
+        window.history.replaceState({}, '', window.location.pathname)
+      }
+    } catch(e) {}
+  }, [user])
   useEffect(() => {
     if (user && Notification.permission === 'default') setShowNotifPrompt(true)
     else if (user && Notification.permission === 'granted') subscribeToPush(user)
