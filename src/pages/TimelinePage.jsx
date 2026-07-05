@@ -624,7 +624,10 @@ function DeniedAccessPage({ onSignOut, user }) {
 
 // ── Invite Landing Page ───────────────────────────────────────
 function InviteLandingPage({ onSignIn }) {
-  const waMsg = encodeURIComponent(`Hi Umer! I just clicked the Wanderlog invite link and I'm about to sign in. Let me know if you need to approve me 👋`)
+  const waMsg = encodeURIComponent(`Hi Umer! I just clicked the Wanderlog invite link and signed in with Google. Please approve my request so I can access the family journal 🙏
+
+Approve me here: https://wanderlog-one.vercel.app
+(Open the app → tap your profile photo → Members → Approve)`)
   return (
     <div style={{ minHeight:'100vh', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'32px 24px', fontFamily:'Geist, sans-serif', position:'relative', overflow:'hidden' }}>
       <style>{`@keyframes meshMove{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}@keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}`}</style>
