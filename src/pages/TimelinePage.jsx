@@ -772,7 +772,7 @@ export function TimelinePage() {
   const [toast, setToast] = useState('')
 
   const showToast = msg => { setToast(msg); setTimeout(() => setToast(''), 3000) }
-  const joinState = useJoinRequest(trips, user, showToast)
+  const joinState = useJoinRequest(user, showToast)
 
   useEffect(() => { loadTripCovers(trips, setTrips) }, [])
   useEffect(() => {
@@ -861,7 +861,7 @@ export function TimelinePage() {
   const access = useAccessControl(user)
 
   // Show invite landing screen if join token present and not signed in
-  const pendingJoinToken = typeof window !== 'undefined' && localStorage.getItem('wanderlog_join_token')
+  const pendingJoinToken = localStorage.getItem('wanderlog_join_token')
   if (!user && !loading && pendingJoinToken) {
     return <InviteLandingPage onSignIn={signInWithGoogle} />
   }
