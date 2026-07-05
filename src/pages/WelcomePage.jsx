@@ -2,28 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
 export function WelcomePage({ onSignIn }) {
-  const [phone, setPhone] = useState('')
-  const [otp, setOtp] = useState('')
-  const [step, setStep] = useState('home')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
 
-  async function sendOTP() {
-    setLoading(true); setError('')
-    const formatted = phone.startsWith('+') ? phone : '+' + phone.replace(/\D/g, '')
-    const { error } = await supabase.auth.signInWithOtp({ phone: formatted })
-    if (error) setError(error.message)
-    else setStep('otp')
-    setLoading(false)
-  }
-
-  async function verifyOTP() {
-    setLoading(true); setError('')
-    const formatted = phone.startsWith('+') ? phone : '+' + phone.replace(/\D/g, '')
-    const { error } = await supabase.auth.verifyOtp({ phone: formatted, token: otp, type: 'sms' })
-    if (error) setError(error.message)
-    setLoading(false)
-  }
 
   const Bg = () => (
     <>
@@ -51,31 +30,6 @@ export function WelcomePage({ onSignIn }) {
     </>
   )
 
-  // ── OTP verification screen ────────────────────────────────
-  if (step === 'otp') {
-    return (
-      <div style={{ minHeight:'100vh', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'32px 24px', fontFamily:'Geist, sans-serif', position:'relative', overflow:'hidden' }}>
-        <style>{`@keyframes meshMove{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}@keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}`}</style>
-        <Bg />
-        <div style={{ position:'relative', zIndex:2, maxWidth:320, width:'100%', textAlign:'center', animation:'fadeUp 0.4s ease both' }}>
-          <div style={{ fontFamily:'Cormorant Garamond, serif', fontStyle:'italic', fontSize:28, color:'#111', marginBottom:6 }}>Check your messages</div>
-          <div style={{ fontSize:14, color:'#888', marginBottom:24 }}>Code sent to <strong>{phone}</strong></div>
-          <div style={{ background:'rgba(255,255,255,0.9)', borderRadius:20, padding:'20px', backdropFilter:'blur(8px)', boxShadow:'0 4px 20px rgba(0,0,0,0.08)' }}>
-            <input type="number" value={otp} onChange={e => setOtp(e.target.value)} placeholder="000000" maxLength={6} autoFocus
-              style={{ width:'100%', border:'1.5px solid #e8e8e8', borderRadius:12, padding:'14px', fontSize:24, fontFamily:'Geist, sans-serif', outline:'none', background:'#fff', textAlign:'center', letterSpacing:'0.3em', marginBottom:12, boxSizing:'border-box' }} />
-            <button onClick={verifyOTP} disabled={loading || otp.length < 6}
-              style={{ width:'100%', background:'#111', color:'#fff', border:'none', borderRadius:12, padding:'14px', fontSize:15, fontWeight:700, cursor:'pointer', opacity:loading||otp.length<6?0.5:1, marginBottom:8 }}>
-              {loading ? 'Verifying…' : 'Verify & Sign in'}
-            </button>
-            {error && <div style={{ fontSize:12, color:'#e53e3e', marginBottom:8 }}>{error}</div>}
-            <button onClick={() => { setStep('home'); setOtp(''); setError('') }}
-              style={{ background:'none', border:'none', color:'#bbb', fontSize:13, cursor:'pointer', fontFamily:'Geist, sans-serif' }}>← Back</button>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
   // ── Main welcome screen ────────────────────────────────────
   return (
     <div style={{ minHeight:'100vh', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'32px 24px', fontFamily:'Geist, sans-serif', position:'relative', overflow:'hidden' }}>
@@ -101,25 +55,7 @@ export function WelcomePage({ onSignIn }) {
             Continue with Google
           </button>
 
-          <div style={{ display:'flex', alignItems:'center', gap:12, margin:'4px 0 12px' }}>
-            <div style={{ flex:1, height:1, background:'rgba(0,0,0,0.08)' }} />
-            <span style={{ fontSize:12, color:'#bbb' }}>or</span>
-            <div style={{ flex:1, height:1, background:'rgba(0,0,0,0.08)' }} />
-          </div>
 
-          <div style={{ background:'rgba(255,255,255,0.85)', borderRadius:16, padding:'16px', backdropFilter:'blur(8px)', boxShadow:'0 4px 20px rgba(0,0,0,0.06)' }}>
-            <div style={{ fontSize:12, fontWeight:600, color:'#888', marginBottom:10, textAlign:'left' }}>Sign in with phone number</div>
-            <div style={{ display:'flex', gap:8 }}>
-              <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+91 98765 43210"
-                style={{ flex:1, border:'1.5px solid #e8e8e8', borderRadius:10, padding:'11px 12px', fontSize:14, fontFamily:'Geist, sans-serif', outline:'none', background:'#fff' }} />
-              <button onClick={sendOTP} disabled={loading || !phone.trim()}
-                style={{ background:'#111', color:'#fff', border:'none', borderRadius:10, padding:'11px 16px', fontSize:13, fontWeight:700, cursor:'pointer', flexShrink:0, opacity:loading||!phone.trim()?0.5:1 }}>
-                {loading ? '…' : 'Send'}
-              </button>
-            </div>
-            {error && <div style={{ fontSize:12, color:'#e53e3e', marginTop:8 }}>{error}</div>}
-            <div style={{ fontSize:11, color:'#bbb', marginTop:6, textAlign:'left' }}>We'll send a 6-digit code to your number</div>
-          </div>
         </div>
 
         <div style={{ marginTop:16, fontSize:11, color:'#ccc' }}>wanderlog · our family's journal</div>
