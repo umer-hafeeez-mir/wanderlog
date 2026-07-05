@@ -118,42 +118,6 @@ function stringToColor(str) {
   return colors[Math.abs(hash) % colors.length]
 }
 
-// ── Access Control ────────────────────────────────────────────
-function useAccessControl(user) {
-  const [access, setAccess] = useState('loading')
-
-  useEffect(() => {
-    if (!user) { setAccess('loading'); return }
-    if (user.email === ADMIN_EMAIL) { setAccess('allowed'); return }
-
-    async function check() {
-      const { data: allowed } = await supabase
-        .from('allowed_users').select('email')
-        .eq('email', user.email).single()
-
-      if (allowed) { setAccess('allowed'); return }
-
-      const { data: member } = await supabase
-        .from('trip_members').select('status')
-        .eq('user_id', user.id).limit(1).single()
-
-      if (member?.status === 'approved') {
-        await supabase.from('allowed_users').insert({ email: user.email, added_by: 'approved_member' }).catch(() => {})
-        setAccess('allowed')
-      } else if (member?.status === 'pending') {
-        setAccess('pending')
-      } else {
-        // If they have a join token pending, don't show denied yet
-        const hasToken = localStorage.getItem('wanderlog_join_token')
-        setAccess(hasToken ? 'allowed' : 'denied')
-      }
-    }
-    check()
-  }, [user])
-
-  return access
-}
-
 function isVideo(url) { return url && /\.(mp4|mov|webm|ogg|avi)$/i.test(url.split('?')[0]) }
 
 async function subscribeToPush(user) {
@@ -608,39 +572,6 @@ function PrivacyToggle({ tripId, isPrivate, onToggle, dark=false }) {
   )
 }
 
-// ── Access Pages ──────────────────────────────────────────────
-function PendingAccessPage({ onSignOut, user }) {
-  const waMsg = encodeURIComponent(`Hi Umer! I signed into Wanderlog with ${user?.email} and I'm waiting for approval 🙏`)
-  return (
-    <div style={{ minHeight:'100vh', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'32px 24px', fontFamily:'Geist, sans-serif', textAlign:'center', background:'linear-gradient(135deg, #fef9f0, #fce8e8, #e8f4fc)' }}>
-      <div style={{ fontSize:52, marginBottom:16 }}>⏳</div>
-      <div style={{ fontFamily:'Cormorant Garamond, serif', fontStyle:'italic', fontSize:28, color:'#111', marginBottom:8 }}>Waiting for approval</div>
-      <div style={{ fontSize:14, color:'#888', lineHeight:1.7, marginBottom:32, maxWidth:280 }}>Your request is pending. Umer needs to approve you before you can access the app.</div>
-      <a href={`https://wa.me/${ADMIN_WHATSAPP}?text=${waMsg}`} target="_blank" rel="noreferrer"
-        style={{ display:'flex', alignItems:'center', gap:10, background:'#25D366', color:'#fff', borderRadius:12, padding:'13px 24px', fontSize:14, fontWeight:700, textDecoration:'none', marginBottom:12 }}>
-        Nudge Umer on WhatsApp
-      </a>
-      <button onClick={onSignOut} style={{ background:'none', border:'none', color:'#bbb', fontSize:13, cursor:'pointer', fontFamily:'Geist, sans-serif' }}>Sign out</button>
-    </div>
-  )
-}
-
-function DeniedAccessPage({ onSignOut, user }) {
-  const waMsg = encodeURIComponent(`Hi Umer! I tried to access Wanderlog with ${user?.email} but I don't have access. Can you invite me?`)
-  return (
-    <div style={{ minHeight:'100vh', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'32px 24px', fontFamily:'Geist, sans-serif', textAlign:'center', background:'linear-gradient(135deg, #fef9f0, #fce8e8)' }}>
-      <div style={{ fontSize:52, marginBottom:16 }}>🔒</div>
-      <div style={{ fontFamily:'Cormorant Garamond, serif', fontStyle:'italic', fontSize:28, color:'#111', marginBottom:8 }}>No access</div>
-      <div style={{ fontSize:14, color:'#888', lineHeight:1.7, marginBottom:32, maxWidth:280 }}><strong>{user?.email}</strong> doesn't have access. You need an invite from Umer.</div>
-      <a href={`https://wa.me/${ADMIN_WHATSAPP}?text=${waMsg}`} target="_blank" rel="noreferrer"
-        style={{ display:'flex', alignItems:'center', gap:10, background:'#25D366', color:'#fff', borderRadius:12, padding:'13px 24px', fontSize:14, fontWeight:700, textDecoration:'none', marginBottom:12 }}>
-        Ask Umer for access
-      </a>
-      <button onClick={onSignOut} style={{ background:'none', border:'none', color:'#bbb', fontSize:13, cursor:'pointer', fontFamily:'Geist, sans-serif' }}>Sign out</button>
-    </div>
-  )
-}
-
 // ── Invite Landing Page ───────────────────────────────────────
 function InviteLandingPage({ onSignIn }) {
   const waMsg = encodeURIComponent(`Hi Umer! I just clicked the Wanderlog invite link. I'm signing in now — tap this link to approve me when ready:
@@ -694,24 +625,13 @@ export function TimelinePage() {
   const [galleryFiles, setGalleryFiles] = useState([])
   const [slideDir, setSlideDir] = useState('none')
   const [toast, setToast] = useState('')
-  const [pendingBadge, setPendingBadge] = useState(0)
 
   const showToast = msg => { setToast(msg); setTimeout(() => setToast(''), 3000) }
 
   // All hooks must be called unconditionally at the top
-  const access = useAccessControl(user)
   const joinState = useJoinRequest(user, showToast)
 
   useEffect(() => { loadTripCovers(trips, setTrips) }, [])
-
-  // Load pending member count for admin badge
-  useEffect(() => {
-    if (user?.email !== ADMIN_EMAIL) return
-    supabase.from('trip_members').select('id', { count: 'exact' })
-      .eq('status', 'pending')
-      .eq('trip_id', DEFAULT_TRIPS.find(t => !t.fixed)?.id)
-      .then(({ count }) => setPendingBadge(count ?? 0))
-  }, [user])
 
   // Deep link: ?approve=true opens Members panel directly, no drawer needed
   useEffect(() => {
@@ -802,23 +722,11 @@ export function TimelinePage() {
   const allTabs = [...trips, UPCOMING_TAB]
 
   // ── Conditional renders (after all hooks) ─────────────────
-  const pendingJoinToken = (() => { try { return localStorage.getItem('wanderlog_join_token') } catch(e) { return null } })()
-
-  if (!user && !loading) {
-    if (pendingJoinToken) return <InviteLandingPage onSignIn={signInWithGoogle} />
-    return <WelcomePage onSignIn={signInWithGoogle} loading={false} />
+  if (!user) {
+    return loading
+      ? <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', fontFamily:'Geist, sans-serif', color:'#aaa' }}>Loading…</div>
+      : <WelcomePage onSignIn={signInWithGoogle} />
   }
-
-  if (!user && loading) {
-    return <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', fontFamily:'Geist, sans-serif', color:'#aaa' }}>Loading…</div>
-  }
-
-  if (access === 'loading') {
-    return <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', fontFamily:'Geist, sans-serif', color:'#aaa' }}>Checking access…</div>
-  }
-
-  if (access === 'pending') return <PendingAccessPage onSignOut={signOut} user={user} />
-  if (access === 'denied') return <DeniedAccessPage onSignOut={signOut} user={user} />
 
   return (
     <div style={{ fontFamily:'Geist, Inter, sans-serif', minHeight:'100vh', color:'#111' }}>
@@ -994,13 +902,13 @@ export function TimelinePage() {
               <div style={{ flex:1, overflowY:'auto' }}>
                 {[
                   { label:'Travel Documents', icon:'🗂️', action:()=>{setShowDocs(true);setShowAccountMenu(false)} },
-                  ...(user.email===ADMIN_EMAIL?[{ label:'Trip Members', icon:'👥', action:()=>{setShowMembers(true);setShowAccountMenu(false)}, highlight: pendingBadge > 0 }]:[]),
+                  ...(user.email===ADMIN_EMAIL?[{ label:'Trip Members', icon:'👥', action:()=>{setShowMembers(true);setShowAccountMenu(false)} }]:[]),
                 ].map(item=>(
                   <button key={item.label} onClick={item.action}
                     style={{ width:'100%', background:'none', border:'none', borderBottom:'1px solid #f8f8f8', padding:'16px 20px', display:'flex', alignItems:'center', gap:14, cursor:'pointer', fontFamily:'Geist, sans-serif', fontSize:14, color:'#111', textAlign:'left' }}>
                     <span style={{ fontSize:20, width:28, textAlign:'center' }}>{item.icon}</span>
                     <span style={{ flex:1 }}>{item.label}</span>
-                    {item.highlight && <span style={{ background:'#FF6B6B', color:'#fff', borderRadius:100, padding:'2px 8px', fontSize:11, fontWeight:700 }}>{pendingBadge}</span>}
+
                   </button>
                 ))}
               </div>
