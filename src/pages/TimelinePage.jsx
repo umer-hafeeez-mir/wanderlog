@@ -32,18 +32,6 @@ if (!document.head.querySelector('[href*="Geist"]')) document.head.appendChild(_
 
 // ── CRITICAL: Save join token synchronously before ANY render ──
 // Must run at module load time so it's in localStorage before React starts
-;(function saveJoinToken() {
-  try {
-    const search = window.location.search || ''
-    const match = search.match(/[?&]join=([^&]+)/)
-    const token = match ? decodeURIComponent(match[1]) : null
-    if (token) {
-      try { localStorage.setItem('wanderlog_join_token', token) } catch(e) {}
-      try { window.history.replaceState({}, '', window.location.pathname) } catch(e) {}
-    }
-  } catch(e) {}
-})()
-
 // ── Helpers ───────────────────────────────────────────────────
 async function loadTripCovers(trips, setTrips) {
   const ids = trips.filter(t => t.id).map(t => t.id)
@@ -56,60 +44,6 @@ async function loadTripCovers(trips, setTrips) {
   }))
 }
 
-// ── Join Request Hook ─────────────────────────────────────────
-// Token is already in localStorage by now (saved synchronously above)
-function useJoinRequest(user, showToast) {
-  const [joinState, setJoinState] = useState(null)
-  const [processed, setProcessed] = useState(false)
-
-  useEffect(() => {
-    if (!user || processed) return
-    let token = null
-    try { token = localStorage.getItem('wanderlog_join_token') } catch(e) {}
-    if (!token) return
-
-    setProcessed(true)
-    try { localStorage.removeItem('wanderlog_join_token') } catch(e) {}
-
-    async function go() {
-      const { data: trip } = await supabase
-        .from('trips').select('id, name, invite_token')
-        .eq('invite_token', token).single()
-
-      if (!trip) { showToast('Invalid invite link'); return }
-
-      const { data: existing } = await supabase
-        .from('trip_members').select('status')
-        .eq('trip_id', trip.id).eq('user_id', user.id).single()
-
-      if (existing) { setJoinState({ trip, status: existing.status }); return }
-
-      const allIds = DEFAULT_TRIPS.filter(t => !t.fixed).map(t => t.id)
-      const { error } = await supabase.from('trip_members').upsert(
-        allIds.map(tripId => ({
-          trip_id: tripId,
-          user_id: user.id,
-          user_name: user.user_metadata?.full_name ?? user.email,
-          user_avatar: user.user_metadata?.avatar_url ?? null,
-          user_email: user.email,
-          status: 'pending',
-        })),
-        { onConflict: 'trip_id,user_id' }
-      )
-
-      if (error) { showToast('Something went wrong'); return }
-
-      const name = user.user_metadata?.full_name ?? user.email
-      const msg = encodeURIComponent(`📸 Wanderlog\n\n*${name}* (${user.email}) wants to join the family journal.\n\nApprove here: https://wanderlog-one.vercel.app`)
-      window.open(`https://wa.me/${ADMIN_WHATSAPP}?text=${msg}`, '_blank')
-
-      setJoinState({ trip, status: 'pending' })
-    }
-    go()
-  }, [user, processed])
-
-  return joinState
-}
 
 function stringToColor(str) {
   const colors = ['#FF6B6B','#FF9F43','#FECA57','#1DD1A1','#48DBFB','#FF9FF3','#54A0FF','#5F27CD']
@@ -528,27 +462,6 @@ function MembersPanel({ trips, user, onClose, showToast }) {
   )
 }
 
-// ── Join Banner ───────────────────────────────────────────────
-function JoinBanner({ joinState, onClose }) {
-  if (!joinState) return null
-  const cfg = {
-    pending: { icon:'⏳', title:'Request sent!', sub:`Your request has been sent to Umer. You'll get a WhatsApp message once approved.` },
-    approved: { icon:'✅', title:"You're in!", sub:`Welcome to the family journal! You can now view and post moments.` },
-    rejected: { icon:'❌', title:'Not approved', sub:`Contact Umer on WhatsApp if you think this is a mistake.` }
-  }
-  const c = cfg[joinState.status] ?? cfg.pending
-  return (
-    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:400, display:'flex', alignItems:'center', justifyContent:'center', padding:24 }}>
-      <div style={{ background:'#fff', borderRadius:20, padding:'36px 28px', maxWidth:360, width:'100%', textAlign:'center' }}>
-        <div style={{ fontSize:48, marginBottom:12 }}>{c.icon}</div>
-        <div style={{ fontFamily:'Cormorant Garamond, serif', fontStyle:'italic', fontSize:24, marginBottom:8 }}>{c.title}</div>
-        <div style={{ fontSize:13, color:'#999', fontFamily:'Geist, sans-serif', lineHeight:1.6, marginBottom:24 }}>{c.sub}</div>
-        <button onClick={onClose} style={{ background:'#111', color:'#fff', border:'none', borderRadius:12, padding:'12px 32px', fontSize:14, fontFamily:'Geist, sans-serif', fontWeight:600, cursor:'pointer' }}>Got it</button>
-      </div>
-    </div>
-  )
-}
-
 // ── Privacy Toggle ────────────────────────────────────────────
 function PrivacyToggle({ tripId, isPrivate, onToggle, dark=false }) {
   const [loading, setLoading] = useState(false)
@@ -569,38 +482,6 @@ function PrivacyToggle({ tripId, isPrivate, onToggle, dark=false }) {
         <div style={{ position:'absolute', top:2, left:isPrivate?16:2, width:14, height:14, borderRadius:'50%', background:'#fff', transition:'left 0.2s', boxShadow:'0 1px 4px rgba(0,0,0,0.25)' }} />
       </div>
     </button>
-  )
-}
-
-// ── Invite Landing Page ───────────────────────────────────────
-function InviteLandingPage({ onSignIn }) {
-  const waMsg = encodeURIComponent(`Hi Umer! I just clicked the Wanderlog invite link. I'm signing in now — tap this link to approve me when ready:
-https://wanderlog-one.vercel.app?approve=true`)
-  return (
-    <div style={{ minHeight:'100vh', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'32px 24px', fontFamily:'Geist, sans-serif', position:'relative', overflow:'hidden' }}>
-      <style>{`@keyframes meshMove{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}@keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}`}</style>
-      <div style={{ position:'fixed', inset:0, zIndex:0, background:'linear-gradient(135deg,#fef9f0,#fce8e8,#e8f4fc,#f0e8fc,#e8fce8)', backgroundSize:'500% 500%', animation:'meshMove 20s ease infinite', pointerEvents:'none' }} />
-      <div style={{ position:'relative', zIndex:1, maxWidth:340, width:'100%', textAlign:'center' }}>
-        <div style={{ fontSize:56, marginBottom:16, animation:'fadeUp 0.5s ease both' }}>🎉</div>
-        <div style={{ fontFamily:'Cormorant Garamond, serif', fontStyle:'italic', fontSize:32, fontWeight:600, color:'#111', marginBottom:8, animation:'fadeUp 0.5s ease 0.1s both' }}>You're invited!</div>
-        <div style={{ fontSize:14, color:'#888', lineHeight:1.6, marginBottom:36, animation:'fadeUp 0.5s ease 0.2s both' }}>Umer has invited you to join the family's private travel journal on Wanderlog.</div>
-        <div style={{ background:'rgba(255,255,255,0.85)', borderRadius:20, padding:'20px', marginBottom:12, backdropFilter:'blur(8px)', boxShadow:'0 4px 20px rgba(0,0,0,0.06)', animation:'fadeUp 0.5s ease 0.3s both' }}>
-          <div style={{ fontSize:12, fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase', color:'#aaa', marginBottom:12 }}>Step 1</div>
-          <a href={`https://wa.me/${ADMIN_WHATSAPP}?text=${waMsg}`} target="_blank" rel="noreferrer"
-            style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:10, background:'#25D366', color:'#fff', borderRadius:12, padding:'14px', fontSize:15, fontWeight:700, textDecoration:'none', boxShadow:'0 4px 16px rgba(37,211,102,0.35)' }}>
-            Message Umer on WhatsApp
-          </a>
-          <div style={{ fontSize:11, color:'#bbb', marginTop:8 }}>Let him know you're joining</div>
-        </div>
-        <div style={{ background:'rgba(255,255,255,0.85)', borderRadius:20, padding:'20px', backdropFilter:'blur(8px)', boxShadow:'0 4px 20px rgba(0,0,0,0.06)', animation:'fadeUp 0.5s ease 0.4s both' }}>
-          <div style={{ fontSize:12, fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase', color:'#aaa', marginBottom:12 }}>Step 2</div>
-          <button onClick={onSignIn} style={{ width:'100%', background:'#111', color:'#fff', border:'none', borderRadius:12, padding:'14px', fontSize:15, fontWeight:700, cursor:'pointer' }}>
-            Sign in with Google
-          </button>
-          <div style={{ fontSize:11, color:'#bbb', marginTop:8 }}>Sign in to complete your request</div>
-        </div>
-      </div>
-    </div>
   )
 }
 
@@ -629,21 +510,10 @@ export function TimelinePage() {
   const showToast = msg => { setToast(msg); setTimeout(() => setToast(''), 3000) }
 
   // All hooks must be called unconditionally at the top
-  const joinState = useJoinRequest(user, showToast)
 
   useEffect(() => { loadTripCovers(trips, setTrips) }, [])
 
-  // Deep link: ?approve=true opens Members panel directly, no drawer needed
-  useEffect(() => {
-    try {
-      const params = new URLSearchParams(window.location.search)
-      if (params.get('approve') === 'true' && user?.email === ADMIN_EMAIL) {
-        setShowAccountMenu(false) // close drawer if open
-        setShowMembers(true)      // open Members directly
-        window.history.replaceState({}, '', window.location.pathname)
-      }
-    } catch(e) {}
-  }, [user])
+
   useEffect(() => {
     if (user && Notification.permission === 'default') setShowNotifPrompt(true)
     else if (user && Notification.permission === 'granted') subscribeToPush(user)
@@ -942,8 +812,7 @@ export function TimelinePage() {
         {deleteMoment&&<DeleteConfirmModal onClose={()=>setDeleteMoment(null)} onConfirm={handleDelete} loading={deleting} />}
         {recapDay&&<DayRecap day={recapDay} moments={grouped[recapDay]??[]} tripName={activeTrip?.label??'Trip'} tripEmoji={activeTrip?.emoji??'✈️'} onClose={()=>setRecapDay(null)} />}
         {showTripBook&&<TripBook moments={visibleMoments} tripName={activeTrip?.label??'Trip'} tripEmoji={activeTrip?.emoji??'✈️'} onClose={()=>setShowTripBook(false)} />}
-        {joinState&&<JoinBanner joinState={joinState} onClose={()=>window.location.reload()} />}
-        {showDocs&&<TravelDocs user={user} onClose={()=>setShowDocs(false)} />}
+                {showDocs&&<TravelDocs user={user} onClose={()=>setShowDocs(false)} />}
 
         {/* Toast */}
         {toast&&<div style={{ position:'fixed', top:66, left:'50%', transform:'translateX(-50%)', background:'rgba(13,13,13,0.9)', color:'#fff', padding:'10px 20px', borderRadius:100, fontSize:13, fontFamily:'Geist, sans-serif', fontWeight:500, zIndex:500, whiteSpace:'nowrap', boxShadow:'0 4px 20px rgba(0,0,0,0.2)', backdropFilter:'blur(8px)' }}>{toast}</div>}
