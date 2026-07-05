@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
-import { format, parseISO, isToday } from 'date-fns'
+import { format, parseISO } from 'date-fns'
 import { supabase } from '../lib/supabase'
 import { useMoments } from '../hooks/useMoments'
 import { useAuth } from '../hooks/useAuth'
@@ -789,10 +789,7 @@ export function TimelinePage() {
   const { moments, loading, addMoment, toggleReaction, refetch, setMoments } = useMoments(activeTrip?.id ?? null)
   const { isOnline, pendingCount, syncing, queueOrPost } = useOfflineQueue(addMoment)
 
-  const visibleMoments = useMemo(() => {
-    if (activeSlug !== 'today') return moments
-    return moments.filter(m => isToday(parseISO(m.created_at)))
-  }, [moments, activeSlug])
+  const visibleMoments = useMemo(() => moments, [moments])
 
   const grouped = useMemo(() =>
     visibleMoments.reduce((acc, m) => {
