@@ -34,10 +34,12 @@ if (!document.head.querySelector('[href*="Geist"]')) document.head.appendChild(_
 // Must run at module load time so it's in localStorage before React starts
 ;(function saveJoinToken() {
   try {
-    const token = new URLSearchParams(window.location.search).get('join')
+    const search = window.location.search || ''
+    const match = search.match(/[?&]join=([^&]+)/)
+    const token = match ? decodeURIComponent(match[1]) : null
     if (token) {
-      localStorage.setItem('wanderlog_join_token', token)
-      window.history.replaceState({}, '', window.location.pathname)
+      try { localStorage.setItem('wanderlog_join_token', token) } catch(e) {}
+      try { window.history.replaceState({}, '', window.location.pathname) } catch(e) {}
     }
   } catch(e) {}
 })()
@@ -62,11 +64,12 @@ function useJoinRequest(user, showToast) {
 
   useEffect(() => {
     if (!user || processed) return
-    const token = localStorage.getItem('wanderlog_join_token')
+    let token = null
+    try { token = localStorage.getItem('wanderlog_join_token') } catch(e) {}
     if (!token) return
 
     setProcessed(true)
-    localStorage.removeItem('wanderlog_join_token')
+    try { localStorage.removeItem('wanderlog_join_token') } catch(e) {}
 
     async function go() {
       const { data: trip } = await supabase
@@ -757,7 +760,7 @@ export function TimelinePage() {
   const allTabs = [...trips, UPCOMING_TAB]
 
   // ── Conditional renders (after all hooks) ─────────────────
-  const pendingJoinToken = localStorage.getItem('wanderlog_join_token')
+  const pendingJoinToken = (() => { try { return localStorage.getItem('wanderlog_join_token') } catch(e) { return null } })()
 
   if (!user && !loading) {
     if (pendingJoinToken) return <InviteLandingPage onSignIn={signInWithGoogle} />
