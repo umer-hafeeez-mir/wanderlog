@@ -500,6 +500,7 @@ export function TimelinePage() {
   const [deleteMoment, setDeleteMoment] = useState(null)
   const [recapDay, setRecapDay] = useState(null)
   const [showTripBook, setShowTripBook] = useState(false)
+  const [showItinerary, setShowItinerary] = useState(false)
   const [showDocs, setShowDocs] = useState(false)
   const [posting, setPosting] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -712,6 +713,7 @@ export function TimelinePage() {
                   </button>
                 })}
                 {activeSlug!=='today'&&visibleMoments.length>0&&<button onClick={()=>setShowTripBook(true)} style={{ background:'rgba(0,0,0,0.06)', border:'1.5px solid rgba(0,0,0,0.1)', borderRadius:100, padding:'5px 14px', fontSize:12, fontFamily:'Geist, sans-serif', fontWeight:600, cursor:'pointer', whiteSpace:'nowrap', color:'#555', flexShrink:0, marginLeft:4 }}>Trip book</button>}
+                {activeSlug==='turkey'&&<button onClick={()=>setShowItinerary(true)} style={{ background:'#0e3b52', color:'#fff', border:'none', borderRadius:100, padding:'5px 14px', fontSize:12, fontFamily:'Geist, sans-serif', fontWeight:700, cursor:'pointer', whiteSpace:'nowrap', flexShrink:0, marginLeft:4 }}>🗺️ Itinerary</button>}
               </div>
             )}
 
@@ -811,6 +813,15 @@ export function TimelinePage() {
         {menuMoment&&<MomentMenu moment={menuMoment} user={user} onDelete={m=>{setMenuMoment(null);setDeleteMoment(m)}} onClose={()=>setMenuMoment(null)} />}
         {deleteMoment&&<DeleteConfirmModal onClose={()=>setDeleteMoment(null)} onConfirm={handleDelete} loading={deleting} />}
         {recapDay&&<DayRecap day={recapDay} moments={grouped[recapDay]??[]} tripName={activeTrip?.label??'Trip'} tripEmoji={activeTrip?.emoji??'✈️'} onClose={()=>setRecapDay(null)} />}
+        {showItinerary&&(
+          <div style={{ position:'fixed', inset:0, zIndex:500, background:'#fff', display:'flex', flexDirection:'column' }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 16px', background:'#0e3b52', flexShrink:0 }}>
+              <div style={{ fontFamily:'Geist, sans-serif', fontWeight:700, fontSize:15, color:'#fff' }}>🗺️ Istanbul Itinerary</div>
+              <button onClick={()=>setShowItinerary(false)} style={{ background:'rgba(255,255,255,0.15)', border:'none', color:'#fff', width:32, height:32, borderRadius:'50%', fontSize:16, cursor:'pointer' }}>✕</button>
+            </div>
+            <iframe src="/itinerary.html" style={{ flex:1, border:'none', width:'100%' }} title="Istanbul Itinerary" />
+          </div>
+        )}
         {showTripBook&&<TripBook moments={visibleMoments} tripName={activeTrip?.label??'Trip'} tripEmoji={activeTrip?.emoji??'✈️'} onClose={()=>setShowTripBook(false)} />}
                 {showDocs&&<TravelDocs user={user} onClose={()=>setShowDocs(false)} />}
 
