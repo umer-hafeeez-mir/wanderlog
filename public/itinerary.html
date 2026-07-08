@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>Istanbul Family Itinerary</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root{
+    --ink:#1c1b19;
+    --sand:#f4ecdd;
+    --sand-deep:#ece0c9;
+    --teal:#0e3b52;
+    --teal-deep:#092838;
+    --turquoise:#2f8f8b;
+    --coral:#c1584c;
+    --coral-deep:#a3453b;
+    --line:#d8cbb0;
+    --radius:14px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--sand);
+    color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    padding-bottom:40px;
+  }
+  header{
+    background:linear-gradient(135deg,var(--teal) 0%, var(--teal-deep) 100%);
+    color:var(--sand);
+    padding:22px 18px 16px;
+    position:relative;
+    overflow:hidden;
+  }
+  header::after{
+    content:"";
+    position:absolute;
+    right:-30px; top:-30px;
+    width:140px;height:140px;
+    border-radius:50%;
+    background:radial-gradient(circle, rgba(47,143,139,0.35), transparent 70%);
+  }
+  header h1{
+    font-family:Georgia,"Iowan Old Style",serif;
+    font-size:1.5rem;
+    margin:0 0 4px;
+    letter-spacing:0.2px;
+  }
+  header p{
+    margin:0;
+    font-size:0.82rem;
+    color:#cfe0e6;
+    opacity:0.9;
+  }
+  nav.tabs{
+    display:flex;
+    background:var(--teal-deep);
+    position:sticky;
+    top:0;
+    z-index:30;
+  }
+  nav.tabs button{
+    flex:1;
+    padding:12px 8px;
+    background:transparent;
+    border:none;
+    color:#a9c2cc;
+    font-size:0.82rem;
+    font-weight:600;
+    letter-spacing:0.3px;
+    border-bottom:3px solid transparent;
+  }
+  nav.tabs button.active{
+    color:var(--sand);
+    border-bottom:3px solid var(--coral);
+  }
+  .daypills{
+    display:flex;
+    overflow-x:auto;
+    gap:6px;
+    padding:10px 12px;
+    background:var(--sand-deep);
+    position:sticky;
+    top:44px;
+    z-index:20;
+    -webkit-overflow-scrolling:touch;
+    border-bottom:1px solid var(--line);
+  }
+  .daypills::-webkit-scrollbar{display:none;}
+  .daypill{
+    flex:0 0 auto;
+    padding:7px 13px;
+    border-radius:999px;
+    background:#fff;
+    border:1px solid var(--line);
+    font-size:0.78rem;
+    font-weight:600;
+    color:var(--teal-deep);
+    white-space:nowrap;
+  }
+  .daypill.active{
+    background:var(--coral);
+    border-color:var(--coral);
+    color:#fff;
+  }
+  main{padding:14px 14px 0;}
+  .banner{
+    background:#fff3e0;
+    border:1px solid #e8d4a8;
+    border-radius:var(--radius);
+    padding:10px 14px;
+    font-size:0.8rem;
+    color:#6b5220;
+    margin-bottom:14px;
+  }
+  section.panel{display:none;}
+  section.panel.active{display:block;}
+
+  .accordion-item{
+    background:#fff;
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    margin-bottom:10px;
+    overflow:hidden;
+  }
+  .accordion-header{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+    padding:13px 14px;
+    cursor:pointer;
+    background:#fff;
+  }
+  .accordion-header .hleft{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    min-width:0;
+  }
+  .daybadge{
+    flex:0 0 auto;
+    width:30px;height:30px;
+    border-radius:50%;
+    background:var(--teal);
+    color:#fff;
+    display:flex;align-items:center;justify-content:center;
+    font-weight:700;
+    font-size:0.82rem;
+  }
+  .htext{min-width:0;}
+  .htitle{
+    font-family:Georgia,"Iowan Old Style",serif;
+    font-size:1rem;
+    color:var(--teal-deep);
+    margin:0;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .hdate{
+    font-size:0.72rem;
+    color:#8a8070;
+    margin-top:1px;
+  }
+  .chevron{
+    flex:0 0 auto;
+    width:20px;height:20px;
+    transition:transform 0.2s ease;
+    color:var(--coral-deep);
+  }
+  .accordion-item.open .chevron{ transform:rotate(180deg); }
+  .accordion-body{
+    max-height:0;
+    overflow:hidden;
+    transition:max-height 0.25s ease;
+    border-top:1px solid transparent;
+  }
+  .accordion-item.open .accordion-body{
+    border-top:1px solid var(--line);
+  }
+  .accordion-body-inner{
+    padding:14px;
+  }
+  .day-narrative{
+    font-size:0.85rem;
+    font-style:italic;
+    color:#5c5648;
+    margin-bottom:12px;
+  }
+  .daymap{
+    width:100%;
+    height:230px;
+    border-radius:12px;
+    border:1px solid var(--line);
+    margin-bottom:12px;
+    background:#e8e0cc;
+  }
+  .leaflet-popup-content-wrapper{ border-radius:10px; }
+  .stop-card{
+    background:var(--sand);
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:11px 13px;
+    margin-bottom:8px;
+    display:flex;
+    gap:11px;
+  }
+  .stop-num{
+    flex:0 0 auto;
+    width:24px;height:24px;
+    border-radius:50%;
+    background:var(--coral);
+    color:#fff;
+    display:flex;align-items:center;justify-content:center;
+    font-weight:700;
+    font-size:0.72rem;
+  }
+  .stop-body{flex:1; min-width:0;}
+  .stop-time{
+    font-size:0.68rem;
+    font-weight:700;
+    color:var(--coral-deep);
+    letter-spacing:0.3px;
+    text-transform:uppercase;
+  }
+  .stop-name{
+    font-size:0.92rem;
+    font-weight:700;
+    color:var(--ink);
+    margin:2px 0 3px;
+  }
+  .stop-note{
+    font-size:0.8rem;
+    color:#5c5648;
+    line-height:1.35;
+  }
+  .stop-link{
+    display:inline-block;
+    margin-top:6px;
+    font-size:0.73rem;
+    font-weight:600;
+    color:var(--turquoise);
+    text-decoration:none;
+    border-bottom:1px solid var(--turquoise);
+  }
+
+  .group-title{
+    font-family:Georgia,serif;
+    color:var(--teal-deep);
+    font-size:1.05rem;
+    margin:18px 0 8px;
+    padding-bottom:4px;
+    border-bottom:2px solid var(--coral);
+    display:inline-block;
+  }
+  .check-item{
+    display:flex;
+    align-items:flex-start;
+    gap:10px;
+    background:#fff;
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:10px 12px;
+    margin-bottom:7px;
+    font-size:0.87rem;
+    line-height:1.35;
+  }
+  .check-item input{
+    margin-top:2px;
+    width:18px;height:18px;
+    accent-color:var(--turquoise);
+    flex:0 0 auto;
+  }
+  .check-item.checked .check-label{
+    text-decoration:line-through;
+    color:#a39d8c;
+  }
+  .legend{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    font-size:0.7rem;
+    color:#5c5648;
+    margin-bottom:10px;
+  }
+  .legend span{
+    display:inline-flex;
+    align-items:center;
+    gap:4px;
+  }
+  .legend i{
+    width:10px;height:10px;
+    border-radius:50%;
+    display:inline-block;
+  }
+  .day-title-lg{
+    font-family:Georgia,serif;
+    font-size:1.15rem;
+    color:var(--teal-deep);
+    margin:4px 0 8px;
+  }
+  footer{
+    text-align:center;
+    font-size:0.7rem;
+    color:#a39d8c;
+    padding:20px 14px 6px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Istanbul Family Itinerary</h1>
+  <p>July 11 &ndash; 21, 2026 &nbsp;&middot;&nbsp; 4 Adults, 2 Elders, 3 Kids &nbsp;&middot;&nbsp; Staying at an Airbnb</p>
+</header>
+
+<nav class="tabs">
+  <button id="tab-itinerary" class="active" onclick="showTab('itinerary')">Itinerary</button>
+  <button id="tab-overview" onclick="showTab('overview')">Full Trip Map</button>
+  <button id="tab-packing" onclick="showTab('packing')">Packing List</button>
+</nav>
+
+<div class="daypills" id="daypills"></div>
+
+<main>
+  <section id="panel-itinerary" class="panel active">
+    <div class="banner">Flight home is July 22. Topkapi is closed Tuesdays; Dolmabah&ccedil;e &amp; S&uuml;leymaniye tombs are closed Mondays &mdash; already built into this plan. Tap a day to expand it.</div>
+    <div id="accordion"></div>
+  </section>
+
+  <section id="panel-overview" class="panel">
+    <div class="day-title-lg">All 11 Days</div>
+    <div class="day-narrative">Tap a pin to see which day and stop it belongs to. Zoom out to see the two out-of-city day trips (B&uuml;y&uuml;kada, Sapanca) and the Florya aquarium/beach day.</div>
+    <div class="legend" id="legend"></div>
+    <div id="overviewMap" style="width:100%;height:420px;border-radius:14px;border:1px solid var(--line);"></div>
+  </section>
+
+  <section id="panel-packing" class="panel">
+    <div class="day-narrative">Tap to check items off as you pack &amp; plan. This list resets if you reload the page &mdash; it's for planning, not a synced tracker.</div>
+    <div id="packingList"></div>
+  </section>
+</main>
+
+<footer>Built for your Istanbul trip &mdash; pacing designed around elders and kids.</footer>
+
+<script>
+const days = [
+  {num:1, date:"Saturday, July 11", title:"Arrival & Sultanahmet First Look",
+   narrative:"Settle in, then an easy evening walk in the old city.",
+   stops:[
+     {time:"5:00 PM", name:"Sultanahmet Square", note:"Free, open, benches everywhere — good gentle first walk.", lat:41.0063286, lng:28.9757051},
+     {time:"5:30 PM", name:"Blue Mosque", note:"Courtyard + exterior, free entry.", lat:41.0054096, lng:28.9768138},
+     {time:"6:15 PM", name:"Fountain of Sultan Ahmed III", note:"Beautiful at dusk with lighting.", lat:41.0082743, lng:28.9812728},
+     {time:"7:30 PM", name:"Dinner: Turgut Kebab Restaurant", note:"Blue Mosque view, very tourist/family friendly.", lat:41.004723, lng:28.979098},
+   ]},
+  {num:2, date:"Sunday, July 12", title:"Byzantine & Ottoman Core",
+   narrative:"Two of the biggest sites, done early to beat crowds and heat.",
+   stops:[
+     {time:"8:30 AM", name:"Hagia Sophia", note:"Go right at opening to avoid the worst queues.", lat:41.008583, lng:28.980175},
+     {time:"10:30 AM", name:"Topkapi Palace", note:"Open Sundays. Budget 2–2.5 hrs with kids/elders.", lat:41.0115195, lng:28.9833789},
+     {time:"1:00 PM", name:"Lunch: Hidden Garden Restaurant", note:"Good vegetarian options too.", lat:41.006749, lng:28.9724282},
+     {time:"2:30 PM", name:"Gülhane Park", note:"Flat, shaded, benches — good rest spot for elders.", lat:41.0133079, lng:28.9815101},
+   ]},
+  {num:3, date:"Monday, July 13", title:"Bosphorus Day",
+   narrative:"Dolmabahçe is closed Mondays — the water day fits here instead.",
+   stops:[
+     {time:"11:00 AM", name:"Bosphorus Cruise (private/family boat)", note:"Book a private boat for a group of 9.", lat:41.0037343, lng:28.9801941},
+     {time:"5:30 PM", name:"Ortaköy", note:"Waterfront mosque, kumpir stalls kids love.", lat:41.0472151, lng:29.0269478},
+   ]},
+  {num:4, date:"Tuesday, July 14", title:"Palace & Old Town Streets",
+   narrative:"Dolmabahçe is open Tuesdays — Topkapi isn't, so palace duty shifts here.",
+   stops:[
+     {time:"9:00 AM", name:"Dolmabahçe Palace", note:"Go early to beat the queue.", lat:41.0391643, lng:29.0004594},
+     {time:"4:00 PM", name:"Istiklal Street", note:"Pedestrian street, historic tram, food stalls.", lat:41.0335, lng:28.9776},
+     {time:"6:30 PM", name:"Galata Tower", note:"Sunset views; streets around it are lovely even without climbing.", lat:41.025569, lng:28.9741286},
+   ]},
+  {num:5, date:"Wednesday, July 15", title:"Underground & Bazaars",
+   narrative:"An atmospheric morning followed by shopping.",
+   stops:[
+     {time:"9:00 AM", name:"Basilica Cistern", note:"Go right at opening; dramatic for kids, flat walkways.", lat:41.008384, lng:28.977878},
+     {time:"11:00 AM", name:"Grand Bazaar & Spice Bazaar", note:"Go early; tight aisles — consider splitting the group.", lat:41.0027745, lng:28.9794613},
+     {time:"3:00 PM", name:"Süleymaniye Mosque", note:"Quieter, great Golden Horn views and gardens.", lat:41.016047, lng:28.9639711},
+   ]},
+  {num:6, date:"Thursday, July 16", title:"Büyükada Day Trip",
+   narrative:"No cars on the island — a genuinely relaxed day for elders and kids alike.",
+   stops:[
+     {time:"10:00 AM", name:"Büyükada", note:"Ferry from Kabataş/Kadıköy (~1–1.5 hrs). Bikes or horse carriage. Free beach near the port.", lat:40.85604, lng:29.1187097},
+   ]},
+  {num:7, date:"Friday, July 17", title:"Workshop + Legoland",
+   narrative:"An indoor, air-conditioned day — good midweek breather from the heat.",
+   stops:[
+     {time:"10:00 AM", name:"Istanbul Experiences Workshops", note:"Turkish coffee or mosaic lamp-making — great for kids too.", lat:41.0166089, lng:28.9736747},
+     {time:"2:00 PM", name:"Legoland Discovery Centre", note:"Forum Istanbul mall. Rides, 4D cinema, build zones. Go by car/van.", lat:41.0456031, lng:28.8965692},
+   ]},
+  {num:8, date:"Saturday, July 18", title:"Asian Side — Kadıköy & Moda",
+   narrative:"A food-and-market day across the Bosphorus, with a flat, easy seaside walk.",
+   stops:[
+     {time:"10:00 AM", name:"Kadıköy Ferry Terminal & Market", note:"Ferry across, food streets, produce market, murals.", lat:40.9922, lng:29.0244},
+     {time:"1:00 PM", name:"Moda", note:"Seaside promenade, ice cream, flat and easy for elders.", lat:40.9800077, lng:29.0228307},
+   ]},
+  {num:9, date:"Sunday, July 19", title:"Lake Sapanca Day Trip",
+   narrative:"A nature reset outside the city — much less walking than the old city.",
+   stops:[
+     {time:"10:00 AM", name:"Lake Sapanca", note:"~1.5–2 hr drive. Lakeside walks, boat ride, relaxed lunch.", lat:40.7163455, lng:30.2628111},
+   ]},
+  {num:10, date:"Monday, July 20", title:"Aquarium + Beach Day (Florya)",
+   narrative:"Two nearby stops — indoor cool-down followed by a swim.",
+   stops:[
+     {time:"10:00 AM", name:"Istanbul Aquarium", note:"Indoor, air-conditioned, easy pace — good for elders too.", lat:40.9651131, lng:28.7989621},
+     {time:"1:30 PM", name:"Moon Beach", note:"Free entry, shallow near shore, family-friendly.", lat:40.9570615, lng:28.8122933},
+   ]},
+  {num:11, date:"Tuesday, July 21", title:"Last Day",
+   narrative:"A gentle finale before the evening farewell cruise.",
+   stops:[
+     {time:"10:00 AM", name:"Balat & Fener Streets", note:"Colorful, photogenic, easy walking.", lat:41.0295, lng:28.9485},
+     {time:"11:30 AM", name:"Balat Toy Museum", note:"Cozy, kid-friendly, puppet show on the top floor.", lat:41.0276931, lng:28.9565148},
+     {time:"7:00 PM", name:"Bosphorus Dinner Cruise & Show", note:"Farewell night — whirling dervish, live music.", lat:41.0132881, lng:28.9770122},
+   ]},
+];
+
+const packing = [
+  {group:"Mobility", items:[
+    "Wheelchair rental — Istanbul Wheelchair (delivers to Airbnb, English-speaking); book ahead for Topkapi & Dolmabahçe days",
+    "Stroller — bring a sturdy/compact one, or rent from Mama Istanbul (delivers & picks up)",
+    "Comfortable closed-toe walking shoes for everyone — old-city cobblestones are uneven",
+  ]},
+  {group:"Getting Around (group of 9)", items:[
+    "Private minivan/driver for cruise, aquarium/beach, and day-trip days",
+    "BiTaksi app for local taxis (more reliable than Uber in Istanbul)",
+    "Buy several Istanbulkart transport cards — works on metro, tram, bus, and ferries",
+  ]},
+  {group:"Queue & Crowd Management", items:[
+    "Consider Istanbul Tourist Pass / Museum Pass for skip-the-line entry",
+    "Visit major sites (Hagia Sophia, Basilica Cistern) right at opening",
+  ]},
+  {group:"Comfort Essentials", items:[
+    "Scarves/shawls for mosque visits (knees & shoulders covered)",
+    "Sun hats, reusable water bottles per person",
+    "Small hand fans / battery fans for midday heat",
+    "First-aid kit + medications clearly labeled + customs documentation in carry-on",
+    "Snacks for day-trip days (Büyükada, Sapanca) where food options are limited",
+  ]},
+  {group:"Before You Go", items:[
+    "Grocery run early in the stay (Airbnb kitchen, kids' snacks, elders' dietary needs)",
+    "Plan a laundry day around Day 7–8",
+    "Save offline maps of Istanbul in case of patchy signal",
+    "Confirm travel insurance & medicine documentation for customs",
+  ]},
+];
+
+const dayMaps = {};
+let overviewMap;
+
+function mapsLink(lat,lng,name){
+  return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}(${encodeURIComponent(name)})`;
+}
+
+function buildDayPills(){
+  const wrap = document.getElementById('daypills');
+  wrap.innerHTML = '';
+  days.forEach(d=>{
+    const btn = document.createElement('button');
+    btn.className = 'daypill';
+    btn.textContent = 'Day ' + d.num;
+    btn.id = 'pill-' + d.num;
+    btn.onclick = ()=>{ jumpToDay(d.num); };
+    wrap.appendChild(btn);
+  });
+}
+
+function jumpToDay(num){
+  document.querySelectorAll('.daypill').forEach(p=>p.classList.remove('active'));
+  document.getElementById('pill-'+num).classList.add('active');
+  document.querySelectorAll('.accordion-item').forEach(el=>{
+    el.classList.toggle('open', parseInt(el.dataset.day)===num);
+    updateBodyHeight(el);
+  });
+  const item = document.getElementById('acc-'+num);
+  item.scrollIntoView({behavior:'smooth', block:'start'});
+  initDayMap(num);
+}
+
+function updateBodyHeight(item){
+  const body = item.querySelector('.accordion-body');
+  if(item.classList.contains('open')){
+    body.style.maxHeight = body.scrollHeight + 400 + 'px';
+  } else {
+    body.style.maxHeight = '0px';
+  }
+}
+
+function toggleDay(num){
+  const item = document.getElementById('acc-'+num);
+  const willOpen = !item.classList.contains('open');
+
+  document.querySelectorAll('.accordion-item').forEach(el=>{
+    el.classList.remove('open');
+    updateBodyHeight(el);
+  });
+  document.querySelectorAll('.daypill').forEach(p=>p.classList.remove('active'));
+
+  if(willOpen){
+    item.classList.add('open');
+    document.getElementById('pill-'+num).classList.add('active');
+    updateBodyHeight(item);
+    initDayMap(num);
+  }
+}
+
+function initDayMap(num){
+  const d = days.find(x=>x.num===num);
+  if(dayMaps[num]){
+    setTimeout(()=>dayMaps[num].invalidateSize(), 260);
+    return;
+  }
+  setTimeout(()=>{
+    const map = L.map('map-'+num);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom:19, attribution:'© OpenStreetMap'
+    }).addTo(map);
+    const bounds = [];
+    d.stops.forEach((s,i)=>{
+      const icon = L.divIcon({
+        html:`<div style="background:#0e3b52;color:#fff;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.4);">${i+1}</div>`,
+        className:'', iconSize:[26,26], iconAnchor:[13,13]
+      });
+      const m = L.marker([s.lat,s.lng], {icon}).addTo(map);
+      m.bindPopup(`<b>${s.name}</b><br>${s.time}<br><a href="${mapsLink(s.lat,s.lng,s.name)}" target="_blank">Open in Google Maps</a>`);
+      bounds.push([s.lat,s.lng]);
+    });
+    if(bounds.length===1){ map.setView(bounds[0], 15); }
+    else { map.fitBounds(bounds, {padding:[24,24]}); }
+    map.invalidateSize();
+    dayMaps[num] = map;
+  }, 60);
+}
+
+function buildAccordion(){
+  const wrap = document.getElementById('accordion');
+  wrap.innerHTML = '';
+  days.forEach((d,idx)=>{
+    const item = document.createElement('div');
+    item.className = 'accordion-item' + (idx===0 ? ' open' : '');
+    item.id = 'acc-' + d.num;
+    item.dataset.day = d.num;
+
+    const stopsHtml = d.stops.map((s,i)=>`
+      <div class="stop-card">
+        <div class="stop-num">${i+1}</div>
+        <div class="stop-body">
+          <div class="stop-time">${s.time}</div>
+          <div class="stop-name">${s.name}</div>
+          <div class="stop-note">${s.note}</div>
+          <a class="stop-link" href="${mapsLink(s.lat,s.lng,s.name)}" target="_blank" rel="noopener">Open in Google Maps →</a>
+        </div>
+      </div>`).join('');
+
+    item.innerHTML = `
+      <div class="accordion-header" onclick="toggleDay(${d.num})">
+        <div class="hleft">
+          <div class="daybadge">${d.num}</div>
+          <div class="htext">
+            <p class="htitle">${d.title}</p>
+            <div class="hdate">${d.date}</div>
+          </div>
+        </div>
+        <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+      </div>
+      <div class="accordion-body">
+        <div class="accordion-body-inner">
+          <div class="day-narrative">${d.narrative}</div>
+          <div class="daymap" id="map-${d.num}"></div>
+          ${stopsHtml}
+        </div>
+      </div>`;
+    wrap.appendChild(item);
+  });
+}
+
+function buildOverviewMap(){
+  if(overviewMap) return;
+  overviewMap = L.map('overviewMap');
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom:19, attribution:'© OpenStreetMap'
+  }).addTo(overviewMap);
+
+  const palette = ['#0e3b52','#c1584c','#2f8f8b','#8a5a44','#b98b2c','#5b6f8c','#a34a7a','#3f8c4b','#c17d2f','#6b4c9a','#2f6f8f'];
+  const legend = document.getElementById('legend');
+  legend.innerHTML = '';
+  const allBounds = [];
+
+  days.forEach((d,di)=>{
+    const color = palette[di % palette.length];
+    const span = document.createElement('span');
+    span.innerHTML = `<i style="background:${color}"></i> Day ${d.num}`;
+    legend.appendChild(span);
+
+    d.stops.forEach((s)=>{
+      const icon = L.divIcon({
+        html:`<div style="background:${color};color:#fff;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:10px;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,0.4);">${d.num}</div>`,
+        className:'', iconSize:[22,22], iconAnchor:[11,11]
+      });
+      const m = L.marker([s.lat,s.lng], {icon}).addTo(overviewMap);
+      m.bindPopup(`<b>Day ${d.num}: ${d.title}</b><br>${s.time} — ${s.name}<br><a href="${mapsLink(s.lat,s.lng,s.name)}" target="_blank">Open in Google Maps</a>`);
+      allBounds.push([s.lat,s.lng]);
+    });
+  });
+
+  setTimeout(()=>{
+    overviewMap.invalidateSize();
+    overviewMap.fitBounds(allBounds, {padding:[20,20]});
+  }, 50);
+}
+
+function buildPacking(){
+  const wrap = document.getElementById('packingList');
+  wrap.innerHTML = '';
+  packing.forEach((g,gi)=>{
+    const h = document.createElement('div');
+    h.className = 'group-title';
+    h.textContent = g.group;
+    wrap.appendChild(h);
+    g.items.forEach((item,ii)=>{
+      const id = 'chk-'+gi+'-'+ii;
+      const row = document.createElement('label');
+      row.className = 'check-item';
+      row.setAttribute('for', id);
+      row.innerHTML = `<input type="checkbox" id="${id}"><span class="check-label">${item}</span>`;
+      const checkbox = row.querySelector('input');
+      checkbox.addEventListener('change', ()=>{
+        row.classList.toggle('checked', checkbox.checked);
+      });
+      wrap.appendChild(row);
+    });
+  });
+}
+
+function showTab(name){
+  ['itinerary','overview','packing'].forEach(t=>{
+    document.getElementById('tab-'+t).classList.toggle('active', t===name);
+    document.getElementById('panel-'+t).classList.toggle('active', t===name);
+  });
+  document.getElementById('daypills').style.display = (name==='itinerary') ? 'flex' : 'none';
+  if(name==='overview'){ buildOverviewMap(); }
+  if(name==='itinerary'){
+    const openItem = document.querySelector('.accordion-item.open');
+    if(openItem) initDayMap(parseInt(openItem.dataset.day));
+  }
+}
+
+buildDayPills();
+buildAccordion();
+buildPacking();
+document.getElementById('pill-1').classList.add('active');
+initDayMap(1);
+</script>
+</body>
+</html>
