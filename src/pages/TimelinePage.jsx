@@ -520,6 +520,15 @@ export function TimelinePage() {
     else if (user && Notification.permission === 'granted') subscribeToPush(user)
   }, [user])
   useEffect(() => { setActiveDay(null) }, [activeSlug])
+
+  // Listen for "We're here" posts from itinerary iframe
+  useEffect(() => {
+    function onMessage(e) {
+      if (e.data?.type === 'moment_posted') refetch()
+    }
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
+  }, [])
   useEffect(() => { setSlideDir('none') }, [activeSlug])
 
   const activeTrip = trips.find(t => t.slug === activeSlug)
