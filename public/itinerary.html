@@ -6,6 +6,7 @@
 <title>Istanbul Family Itinerary</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
   :root{
     --ink:#1c1b19;
@@ -238,6 +239,25 @@
     color:#5c5648;
     line-height:1.35;
   }
+  .were-here-btn{
+    display:inline-flex;
+    align-items:center;
+    gap:5px;
+    margin-top:8px;
+    background:#0e3b52;
+    color:#fff;
+    border:none;
+    border-radius:999px;
+    padding:6px 14px;
+    font-size:0.75rem;
+    font-weight:700;
+    cursor:pointer;
+    font-family:inherit;
+    transition:background 0.15s;
+  }
+  .were-here-btn:active{ background:#092838; }
+  .were-here-btn.done{ background:#2f8f8b; }
+  .were-here-btn.posting{ opacity:0.6; cursor:wait; }
   .stop-link{
     display:inline-block;
     margin-top:6px;
@@ -274,6 +294,12 @@
     width:18px;height:18px;
     accent-color:var(--turquoise);
     flex:0 0 auto;
+  }
+  .check-item.synced::after{
+    content:"✓ saved";
+    font-size:0.65rem;
+    color:#2f8f8b;
+    margin-left:6px;
   }
   .check-item.checked .check-label{
     text-decoration:line-through;
@@ -652,11 +678,180 @@ function showTab(name){
   }
 }
 
-buildDayPills();
-buildAccordion();
-buildPacking();
-document.getElementById('pill-1').classList.add('active');
-initDayMap(1);
+// Init handled by injected code below
+
+
+// ── Supabase setup ────────────────────────────────────────────
+const SUPABASE_URL = 'https://auafoiwemoegesjekefy.supabase.co'
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF1YWZvaXdlbW9lZ2VzamVrZWZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDYzNzc3MTYsImV4cCI6MjA2MTk1MzcxNn0.UAEGinaLm1PdEMFSv_g9Rq9GGCMqRqvHjRkI83HuVjU'
+const TURKEY_TRIP_ID = 'd93cebae-a4c1-4f71-842c-88410af4450a'
+
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
+
+let currentUser = null
+
+async function initAuth() {
+  const { data: { session } } = await db.auth.getSession()
+  currentUser = session?.user ?? null
+  db.auth.onAuthStateChange((_e, session) => {
+    currentUser = session?.user ?? null
+  })
+}
+initAuth()
+
+// ── "We're here" — post moment to Turkey timeline ─────────────
+async function postWeAreHere(btn, stopName, stopNote, lat, lng) {
+  if (!currentUser) {
+    alert('Please sign in to Wanderlog to post moments.')
+    return
+  }
+  if (btn.classList.contains('done') || btn.classList.contains('posting')) return
+
+  btn.classList.add('posting')
+  btn.textContent = 'Posting…'
+
+  try {
+    const { data: moment, error } = await db.from('moments').insert({
+      trip_id: TURKEY_TRIP_ID,
+      user_id: currentUser.id,
+      user_name: currentUser.user_metadata?.full_name ?? currentUser.email,
+      user_avatar: currentUser.user_metadata?.avatar_url ?? null,
+      caption: `📍 We're at ${stopName}! ${stopNote}`,
+      location: stopName,
+      latitude: lat,
+      longitude: lng,
+    }).select().single()
+
+    if (error) throw error
+
+    btn.classList.remove('posting')
+    btn.classList.add('done')
+    btn.textContent = '✓ Posted to timeline!'
+
+    // Notify parent window (Wanderlog app) to refresh moments
+    window.parent.postMessage({ type: 'moment_posted', tripId: TURKEY_TRIP_ID }, '*')
+
+  } catch(e) {
+    btn.classList.remove('posting')
+    btn.textContent = "We're here 📍"
+    alert('Failed to post: ' + e.message)
+  }
+}
+
+// ── Saveable packing list ─────────────────────────────────────
+const PACKING_KEY = 'wanderlog_packing_turkey'
+
+function loadPackingState() {
+  try {
+    return JSON.parse(localStorage.getItem(PACKING_KEY) || '{}')
+  } catch { return {} }
+}
+
+function savePackingState(state) {
+  try { localStorage.setItem(PACKING_KEY, JSON.stringify(state)) } catch {}
+}
+
+// Override buildPacking to include saved state + "We're here" buttons
+const _origBuildPacking = buildPacking
+window.buildPacking = function() {
+  const wrap = document.getElementById('packingList')
+  wrap.innerHTML = ''
+  const state = loadPackingState()
+
+  // Sync button
+  const syncDiv = document.createElement('div')
+  syncDiv.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;'
+  syncDiv.innerHTML = `
+    <span style="font-size:0.8rem;color:#5c5648;font-style:italic;">Checks are saved on this device</span>
+    <button onclick="clearPacking()" style="background:none;border:1px solid #d8cbb0;border-radius:8px;padding:4px 10px;font-size:0.72rem;color:#a39d8c;cursor:pointer;">Clear all</button>
+  `
+  wrap.appendChild(syncDiv)
+
+  packing.forEach((g, gi) => {
+    const h = document.createElement('div')
+    h.className = 'group-title'
+    h.textContent = g.group
+    wrap.appendChild(h)
+    g.items.forEach((item, ii) => {
+      const key = gi + '-' + ii
+      const id = 'chk-' + key
+      const checked = !!state[key]
+      const row = document.createElement('label')
+      row.className = 'check-item' + (checked ? ' checked' : '')
+      row.setAttribute('for', id)
+      row.innerHTML = `<input type="checkbox" id="${id}" ${checked ? 'checked' : ''}><span class="check-label">${item}</span>`
+      const checkbox = row.querySelector('input')
+      checkbox.addEventListener('change', () => {
+        const s = loadPackingState()
+        if (checkbox.checked) s[key] = true; else delete s[key]
+        savePackingState(s)
+        row.classList.toggle('checked', checkbox.checked)
+      })
+      wrap.appendChild(row)
+    })
+  })
+}
+
+function clearPacking() {
+  if (!confirm('Clear all checked items?')) return
+  savePackingState({})
+  buildPacking()
+}
+
+// ── Inject "We're here" button into each stop card ────────────
+const _origBuildAccordion = buildAccordion
+window.buildAccordion = function() {
+  const wrap = document.getElementById('accordion')
+  wrap.innerHTML = ''
+  days.forEach((d, idx) => {
+    const item = document.createElement('div')
+    item.className = 'accordion-item' + (idx === 0 ? ' open' : '')
+    item.id = 'acc-' + d.num
+    item.dataset.day = d.num
+
+    const stopsHtml = d.stops.map((s, i) => `
+      <div class="stop-card">
+        <div class="stop-num">${i+1}</div>
+        <div class="stop-body">
+          <div class="stop-time">${s.time}</div>
+          <div class="stop-name">${s.name}</div>
+          <div class="stop-note">${s.note}</div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px;">
+            <a class="stop-link" href="${mapsLink(s.lat,s.lng,s.name)}" target="_blank" rel="noopener">Google Maps →</a>
+            <button class="were-here-btn" onclick="postWeAreHere(this,'${s.name.replace(/'/g,"\'")}','${s.note.replace(/'/g,"\'").replace(/"/g,'\"').substring(0,60)}',${s.lat},${s.lng})">📍 We're here!</button>
+          </div>
+        </div>
+      </div>`).join('')
+
+    item.innerHTML = `
+      <div class="accordion-header" onclick="toggleDay(${d.num})">
+        <div class="hleft">
+          <div class="daybadge">${d.num}</div>
+          <div class="htext">
+            <p class="htitle">${d.title}</p>
+            <div class="hdate">${d.date}</div>
+          </div>
+        </div>
+        <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+      </div>
+      <div class="accordion-body">
+        <div class="accordion-body-inner">
+          <div class="day-narrative">${d.narrative}</div>
+          <div class="daymap" id="map-${d.num}"></div>
+          ${stopsHtml}
+        </div>
+      </div>`
+    wrap.appendChild(item)
+  })
+}
+
+// Re-run with new functions
+buildDayPills()
+buildAccordion()
+buildPacking()
+document.getElementById('pill-1').classList.add('active')
+initDayMap(1)
+
 </script>
 </body>
 </html>
