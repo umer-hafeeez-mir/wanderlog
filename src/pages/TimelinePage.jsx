@@ -712,7 +712,7 @@ export function TimelinePage() {
               </div>
             )}
 
-            {/* Day pills */}
+            {/* Day pills — row 1 */}
             {days.length>0&&(
               <div style={{ display:'flex', gap:8, padding:'12px 0 4px', overflowX:'auto', scrollbarWidth:'none' }}>
                 {days.map((day,idx)=>{
@@ -722,9 +722,14 @@ export function TimelinePage() {
                     {day} <span style={{ background:isActive?'rgba(255,255,255,0.25)':`${color}30`, borderRadius:100, padding:'1px 6px', fontSize:10, fontWeight:800, marginLeft:2 }}>{grouped[day]?.length}</span>
                   </button>
                 })}
-                {activeSlug!=='today'&&visibleMoments.length>0&&<button onClick={()=>setShowTripBook(true)} style={{ background:'rgba(0,0,0,0.06)', border:'1.5px solid rgba(0,0,0,0.1)', borderRadius:100, padding:'5px 14px', fontSize:12, fontFamily:'Geist, sans-serif', fontWeight:600, cursor:'pointer', whiteSpace:'nowrap', color:'#555', flexShrink:0, marginLeft:4 }}>Trip book</button>}
-                {activeSlug==='turkey'&&<button onClick={()=>setShowItinerary(true)} style={{ background:'#0e3b52', color:'#fff', border:'none', borderRadius:100, padding:'5px 14px', fontSize:12, fontFamily:'Geist, sans-serif', fontWeight:700, cursor:'pointer', whiteSpace:'nowrap', flexShrink:0, marginLeft:4 }}>🗺️ Itinerary</button>}
-                {activeSlug==='turkey'&&<button onClick={()=>setShowLinks(true)} style={{ background:'#1a5c52', color:'#fff', border:'none', borderRadius:100, padding:'5px 14px', fontSize:12, fontFamily:'Geist, sans-serif', fontWeight:700, cursor:'pointer', whiteSpace:'nowrap', flexShrink:0, marginLeft:4 }}>🔗 Links</button>}
+              </div>
+            )}
+            {/* Day pills — row 2: trip tools */}
+            {days.length>0&&(
+              <div style={{ display:'flex', gap:6, padding:'0 0 8px', flexWrap:'wrap' }}>
+                {activeSlug!=='today'&&visibleMoments.length>0&&<button onClick={()=>setShowTripBook(true)} style={{ background:'rgba(0,0,0,0.06)', border:'1.5px solid rgba(0,0,0,0.1)', borderRadius:100, padding:'5px 14px', fontSize:12, fontFamily:'Geist, sans-serif', fontWeight:600, cursor:'pointer', whiteSpace:'nowrap', color:'#555' }}>Trip book</button>}
+                {activeSlug==='turkey'&&<button onClick={()=>setShowItinerary(true)} style={{ background:'#0e3b52', color:'#fff', border:'none', borderRadius:100, padding:'5px 14px', fontSize:12, fontFamily:'Geist, sans-serif', fontWeight:700, cursor:'pointer', whiteSpace:'nowrap' }}>🗺️ Itinerary</button>}
+                {activeSlug==='turkey'&&<button onClick={()=>setShowLinks(true)} style={{ background:'#1a5c52', color:'#fff', border:'none', borderRadius:100, padding:'5px 14px', fontSize:12, fontFamily:'Geist, sans-serif', fontWeight:700, cursor:'pointer', whiteSpace:'nowrap' }}>🔗 Links</button>}
               </div>
             )}
 
