@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>Istanbul Family Links</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,400;1,600&family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #faf7f2;
+    --card: #ffffff;
+    --ink: #1a1714;
+    --muted: #7a746c;
+    --line: #e8e0d4;
+    --teal: #1a5c52;
+    --teal-light: #edf5f3;
+    --coral: #c1584c;
+    --coral-light: #fdf1ef;
+    --gold: #b5872a;
+    --gold-light: #fdf8ee;
+    --blue: #2563a8;
+    --blue-light: #eff4fc;
+    --green: #25a244;
+    --green-light: #effbf2;
+    --purple: #6b4fa0;
+    --purple-light: #f4f0fb;
+    --radius: 16px;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; margin: 0; padding: 0; }
+  html, body { background: var(--bg); color: var(--ink); font-family: 'Geist', sans-serif; -webkit-font-smoothing: antialiased; }
+  body { padding-bottom: 48px; }
+
+  /* Header */
+  .header {
+    background: var(--teal);
+    padding: 20px 16px 16px;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+  }
+  .header-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .header h1 {
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-size: 1.4rem;
+    color: #fff;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .header-sub {
+    font-size: 0.72rem;
+    color: rgba(255,255,255,0.6);
+    font-weight: 400;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 2px;
+  }
+  .bnb-badge {
+    background: rgba(255,255,255,0.12);
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 999px;
+    padding: 3px 10px;
+    font-size: 0.7rem;
+    color: rgba(255,255,255,0.85);
+    font-weight: 600;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  /* Category pills */
+  .cat-pills {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding-bottom: 2px;
+  }
+  .cat-pills::-webkit-scrollbar { display: none; }
+  .cat-pill {
+    flex-shrink: 0;
+    padding: 5px 12px;
+    border-radius: 999px;
+    border: none;
+    font-size: 0.72rem;
+    font-weight: 700;
+    font-family: 'Geist', sans-serif;
+    cursor: pointer;
+    background: rgba(255,255,255,0.12);
+    color: rgba(255,255,255,0.7);
+    transition: all 0.15s;
+  }
+  .cat-pill.active {
+    background: #fff;
+    color: var(--teal);
+  }
+
+  /* Main */
+  main { padding: 14px 12px 0; }
+
+  /* Section */
+  .section { margin-bottom: 22px; }
+  .section-title {
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 10px;
+    padding-left: 2px;
+  }
+
+  /* Cards */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 14px;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    transition: transform 0.1s;
+  }
+  .card:active { transform: scale(0.99); }
+  .card-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    flex-shrink: 0;
+  }
+  .card-body { flex: 1; min-width: 0; }
+  .card-name {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--ink);
+    margin-bottom: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .card-detail {
+    font-size: 0.75rem;
+    color: var(--muted);
+    line-height: 1.4;
+    margin-bottom: 8px;
+  }
+  .card-actions {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    border-radius: 999px;
+    padding: 5px 12px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    font-family: 'Geist', sans-serif;
+    text-decoration: none;
+    border: none;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: opacity 0.15s;
+  }
+  .btn:active { opacity: 0.75; }
+  .btn-map   { background: var(--blue-light);   color: var(--blue);   }
+  .btn-call  { background: var(--green-light);  color: var(--green);  }
+  .btn-wa    { background: var(--green-light);  color: #128c3e;       }
+  .btn-book  { background: var(--teal-light);   color: var(--teal);   }
+  .btn-web   { background: var(--gold-light);   color: var(--gold);   }
+  .btn-duty  { background: var(--purple-light); color: var(--purple); }
+
+  /* Emergency card — full width prominent */
+  .emergency-card {
+    background: #fff5f4;
+    border: 1.5px solid #f5c6c2;
+    border-radius: var(--radius);
+    padding: 14px;
+    margin-bottom: 8px;
+  }
+  .emergency-card .card-name { color: var(--coral); }
+  .emergency-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid #f5c6c2;
+  }
+  .emergency-row:last-child { border-bottom: none; padding-bottom: 0; }
+  .emergency-label { font-size: 0.78rem; color: var(--muted); }
+  .emergency-num {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--coral);
+    text-decoration: none;
+    letter-spacing: 0.02em;
+  }
+
+  /* Info banner */
+  .info-banner {
+    background: var(--gold-light);
+    border: 1px solid #e8d4a0;
+    border-radius: 12px;
+    padding: 10px 13px;
+    font-size: 0.76rem;
+    color: #7a5c1a;
+    margin-bottom: 12px;
+    line-height: 1.5;
+  }
+
+  /* Hidden sections */
+  .section[data-cat]:not(.visible) { display: none; }
+  .section[data-cat].visible { display: block; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-top">
+    <div>
+      <h1>Istanbul Links</h1>
+      <div class="header-sub">
+        Fatih / Sultanahmet &nbsp;·&nbsp; Airbnb base
+        <a href="https://www.airbnb.co.in/rooms/617364394549821912" target="_blank" class="bnb-badge">View Airbnb ↗</a>
+      </div>
+    </div>
+  </div>
+  <div class="cat-pills">
+    <button class="cat-pill active" onclick="filter('all')">All</button>
+    <button class="cat-pill" onclick="filter('mobility')">Mobility</button>
+    <button class="cat-pill" onclick="filter('food')">Food</button>
+    <button class="cat-pill" onclick="filter('essentials')">Essentials</button>
+    <button class="cat-pill" onclick="filter('transport')">Transport</button>
+    <button class="cat-pill" onclick="filter('bookings')">Bookings</button>
+    <button class="cat-pill" onclick="filter('emergency')">Emergency</button>
+  </div>
+</div>
+
+<main>
+
+  <div class="info-banner">
+    📍 All links and numbers are for the <strong>Fatih / Sultanahmet</strong> area — walking distance from the Airbnb. Tap any button to call, navigate, or book directly.
+  </div>
+
+  <!-- MOBILITY -->
+  <div class="section visible" data-cat="mobility">
+    <div class="section-title">Wheelchair & Stroller</div>
+
+    <div class="card">
+      <div class="card-icon" style="background:#edf5f3">♿</div>
+      <div class="card-body">
+        <div class="card-name">Istanbul Wheelchair</div>
+        <div class="card-detail">Delivers to Airbnb in Sultanahmet. Manual, electric, strollers, rollators. Open 7/24. Address: Küçük Ayasofya Mah., Oğul Sokak No:18</div>
+        <div class="card-actions">
+          <a class="btn btn-wa" href="https://wa.me/905321234567" target="_blank">WhatsApp</a>
+          <a class="btn btn-web" href="https://www.wheelchairistanbul.com" target="_blank">Book online</a>
+          <a class="btn btn-map" href="https://www.google.com/maps/search/Istanbul+Wheelchair+Sultanahmet/@41.0036,28.9747,16z" target="_blank">Map</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-icon" style="background:#eff4fc">🛺</div>
+      <div class="card-body">
+        <div class="card-name">Motion4Rent</div>
+        <div class="card-detail">Electric wheelchair rental with home/hotel delivery. ~$31/day. Delivery service available. Highly rated for cobblestone-ready chairs.</div>
+        <div class="card-actions">
+          <a class="btn btn-book" href="https://www.motion4rent.com/electric-wheelchair-rental-in-istanbul" target="_blank">Book online</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-icon" style="background:#fdf8ee">🍼</div>
+      <div class="card-body">
+        <div class="card-name">Istanbul Wheelchair — Strollers</div>
+        <div class="card-detail">Same company rents strollers/prams. Delivers same-day. Great for Anas (3) and Sarah (4) on long walking days.</div>
+        <div class="card-actions">
+          <a class="btn btn-wa" href="https://wa.me/905321234567" target="_blank">WhatsApp to rent</a>
+          <a class="btn btn-web" href="https://www.wheelchairistanbul.com" target="_blank">Website</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FOOD -->
+  <div class="section visible" data-cat="food">
+    <div class="section-title">Restaurants near Airbnb</div>
+
+    <div class="card">
+      <div class="card-icon" style="background:#fdf1ef">🥙</div>
+      <div class="card-body">
+        <div class="card-name">Tarihi Sultanahmet Koftecisi</div>
+        <div class="card-detail">Istanbul legend since 1920. Best kofte in the city. 3 min walk. Divan Yolu Cd. No:12, Fatih. Open 10:30AM–11PM daily.</div>
+        <div class="card-actions">
+          <a class="btn btn-map" href="https://maps.google.com/?q=Tarihi+Sultanahmet+Koftecisi,+Divan+Yolu+Cd+No+12+Istanbul" target="_blank">Navigate</a>
+          <a class="btn btn-call" href="tel:+902125126060">Call</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-icon" style="background:#effbf2">🐟</div>
+      <div class="card-body">
+        <div class="card-name">Giritli Restaurant</div>
+        <div class="card-detail">Charming 19th-century restaurant in Sultanahmet. Set menu with Cretan-Turkish seafood. Garden seating. Cankurtaran, Yeni Güvey Sk. No:9, Fatih.</div>
+        <div class="card-actions">
+          <a class="btn btn-map" href="https://maps.google.com/?q=Giritli+Restaurant+Sultanahmet+Istanbul" target="_blank">Navigate</a>
+          <a class="btn btn-web" href="https://www.tripadvisor.com/Restaurant_Review-g293974-d722328-Reviews-Giritli_Restaurant-Istanbul.html" target="_blank">Reviews</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-icon" style="background:#fdf8ee">🍢</div>
+      <div class="card-body">
+        <div class="card-name">Kasap Osman</div>
+        <div class="card-detail">Best doner kebab in Sirkeci since 1964. Hoca Pasa Mh., Hocapaşa Sk. No:8/A, Sirkeci. Open 9AM–9PM daily. Very family friendly.</div>
+        <div class="card-actions">
+          <a class="btn btn-map" href="https://maps.google.com/?q=Kasap+Osman+Sirkeci+Istanbul" target="_blank">Navigate</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-icon" style="background:#f4f0fb">🍳</div>
+      <div class="card-body">
+        <div class="card-name">Fener Hanımeli Cafe</div>
+        <div class="card-detail">Cozy, home-cooked Turkish food. Known for gozleme (flatbreads). Excellent for breakfast or lunch with kids. Fatih area.</div>
+        <div class="card-actions">
+          <a class="btn btn-map" href="https://maps.google.com/?q=Fener+Hanımeli+Cafe+Fatih+Istanbul" target="_blank">Navigate</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-icon" style="background:#edf5f3">🧆</div>
+      <div class="card-body">
+        <div class="card-name">Pakistani / Syrian Grocery — Fatih</div>
+        <div class="card-detail">Pakistani grocery near Malta Çarşısı St, Fatih. Al Radwan Market (Syrian) also nearby for spices, flatbread, lentils. Great for cooking at Airbnb.</div>
+        <div class="card-actions">
+          <a class="btn btn-map" href="https://maps.google.com/?q=Pakistani+grocery+Fatih+Istanbul" target="_blank">Find on map</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ESSENTIALS -->
+  <div class="section visible" data-cat="essentials">
+    <div class="section-title">Pharmacy</div>
+
+    <div class="card">
+      <div class="card-icon" style="background:#effbf2">💊</div>
+      <div class="card-body">
+        <div class="card-name">Karabiber Eczane — 24 hours</div>
+        <div class="card-detail">Only confirmed 24hr pharmacy in Fatih. Kadırga Limanı Cad. No:31C, Fatih. Always open.</div>
+        <div class="card-actions">
+          <a class="btn btn-map" href="https://maps.google.com/?q=Karabiber+Eczane+Kadirga+Limani+Fatih+Istanbul" target="_blank">Navigate</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-icon" style="background:#f4f0fb">🏥</div>
+      <div class="card-body">
+        <div class="card-name">Find today's on-duty pharmacy</div>
+        <div class="card-detail">Turkish pharmacies rotate night duty daily (nöbetçi eczane). Tap to find which is open right now in Fatih.</div>
+        <div class="card-actions">
+          <a class="btn btn-duty" href="https://www.happ.health/duty-pharmacy/en/istanbul/fatih" target="_blank">Find open pharmacy now</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-title" style="margin-top:6px">Grocery</div>
+
+    <div class="card">
+      <div class="card-icon" style="background:#fdf8ee">🛒</div>
+      <div class="card-body">
+        <div class="card-name">BIM Supermarket — Fatih</div>
+        <div class="card-detail">Cheapest option for daily staples. Multiple branches in Fatih. Open daily ~8AM–10PM.</div>
+        <div class="card-actions">
+          <a class="btn btn-map" href="https://maps.google.com/?q=BIM+market+Fatih+Istanbul" target="_blank">Find nearest BIM</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-icon" style="background:#eff4fc">🛍️</div>
+      <div class="card-body">
+        <div class="card-name">Migros Supermarket</div>
+        <div class="card-detail">Better selection, imported goods, wine & beer. Nearest to Sultanahmet at Eminönü or Aksaray. Open ~8AM–10PM.</div>
+        <div class="card-actions">
+          <a class="btn btn-map" href="https://maps.google.com/?q=Migros+Eminonu+Istanbul" target="_blank">Navigate</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-title" style="margin-top:6px">ATM</div>
+
+    <div class="card">
+      <div class="card-icon" style="background:#fdf1ef">💳</div>
+      <div class="card-body">
+        <div class="card-name">ATMs on Divan Yolu</div>
+        <div class="card-detail">Multiple ATMs on Divan Yolu Cad (main tourist street, 2 min from Airbnb). İşbank, Ziraat, Garanti all have machines. Use Ziraat or İşbank for lowest fees.</div>
+        <div class="card-actions">
+          <a class="btn btn-map" href="https://maps.google.com/?q=ATM+Divan+Yolu+Sultanahmet+Istanbul" target="_blank">Find ATM</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-title" style="margin-top:6px">Parks & Gardens</div>
+
+    <div class="card">
+      <div class="card-icon" style="background:#effbf2">🌳</div>
+      <div class="card-body">
+        <div class="card-name">Gülhane Park</div>
+        <div class="card-detail">Largest park in old city. Flat paths, shaded benches, café inside. Wheelchair friendly. 5 min walk. Free entry. Great rest stop for elders and kids.</div>
+        <div class="card-actions">
+          <a class="btn btn-map" href="https://maps.google.com/?q=Gulhane+Park+Istanbul" target="_blank">Navigate</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-icon" style="background:#edf5f3">⛲</div>
+      <div class="card-body">
+        <div class="card-name">Sultanahmet Square</div>
+        <div class="card-detail">Open, flat, benches all around the Hippodrome area. Kids can run freely. Blue Mosque and fountains. Free, always open.</div>
+        <div class="card-actions">
+          <a class="btn btn-map" href="https://maps.google.com/?q=Sultanahmet+Square+Istanbul" target="_blank">Navigate</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TRANSPORT -->
+  <div class="section visible" data-cat="transport">
+    <div class="section-title">Getting Around</div>
+
+    <div class="card">
+      <div class="card-icon" style="background:#eff4fc">🚕</div>
+      <div class="card-body">
+        <div class="card-name">BiTaksi — Taxi App</div>
+        <div class="card-detail">Turkey's most reliable taxi app. More trustworthy than hailing off the street. Fixed price shown before booking. Works across Istanbul.</div>
+        <div class="card-actions">
+          <a class="btn btn-book" href="https://www.bitaksi.com" target="_blank">Open app / website</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-icon" style="background:#edf5f3">🚋</div>
+      <div class="card-body">
+        <div class="card-name">T1 Tram — Wheelchair Accessible</div>
+        <div class="card-detail">Runs every 5 min, 6AM–midnight. Stops at Sultanahmet (2 min walk). Connects to Grand Bazaar, Galata Bridge, Kabataş. Fully accessible. Use Istanbulkart.</div>
+        <div class="card-actions">
+          <a class="btn btn-map" href="https://maps.google.com/?q=Sultanahmet+Tram+Stop+Istanbul" target="_blank">Sultanahmet stop</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-icon" style="background:#fdf8ee">💳</div>
+      <div class="card-body">
+        <div class="card-name">Istanbulkart — Transport Card</div>
+        <div class="card-detail">Single card works on all metro, tram, bus, and ferry. Buy at any metro station or kiosk. 9 people need 9 cards (or share — tap card, pass back).</div>
+        <div class="card-actions">
+          <a class="btn btn-map" href="https://maps.google.com/?q=metro+station+Sultanahmet+Istanbul" target="_blank">Nearest metro</a>
+          <a class="btn btn-web" href="https://www.istanbulkart.istanbul" target="_blank">Top up online</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-icon" style="background:#f4f0fb">⛴️</div>
+      <div class="card-body">
+        <div class="card-name">Şehir Hatları Ferry — Wheelchair Accessible</div>
+        <div class="card-detail">Official Istanbul ferries — accessible for wheelchairs. Runs Eminönü ↔ Asian side. Use for Kadıköy day trip. Scan Istanbulkart to board.</div>
+        <div class="card-actions">
+          <a class="btn btn-map" href="https://maps.google.com/?q=Eminonu+Ferry+Terminal+Istanbul" target="_blank">Eminönü terminal</a>
+          <a class="btn btn-web" href="https://www.sehirhatlari.istanbul" target="_blank">Schedule</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-icon" style="background:#fdf1ef">🚌</div>
+      <div class="card-body">
+        <div class="card-name">Big Bus Istanbul — Hop On/Off</div>
+        <div class="card-detail">Accessible double-decker tourist bus. Good for elders & wheelchair users — avoids cobblestones. 1, 2 or 3-day tickets. Covers all main sights.</div>
+        <div class="card-actions">
+          <a class="btn btn-book" href="https://www.bigbustours.com/en/istanbul/istanbul-bus-tours/" target="_blank">Book tickets</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BOOKINGS -->
+  <div class="section visible" data-cat="bookings">
+    <div class="section-title">Pre-book These</div>
+
+    <div class="card">
+      <div class="card-icon" style="background:#edf5f3">🛥️</div>
+      <div class="card-body">
+        <div class="card-name">Private Bosphorus Cruise (Day 3)</div>
+        <div class="card-detail">Book a private boat for 9 people. Viator and GetYourGuide both have options. Private is worth it with elders + 3 kids. Book 2 weeks ahead.</div>
+        <div class="card-actions">
+          <a class="btn btn-book" href="https://www.viator.com/Istanbul-tours/Cruises-and-Sailing/d585-g6" target="_blank">Viator — boats</a>
+          <a class="btn btn-web" href="https://www.getyourguide.com/istanbul-l56/bosphorus-cruise-tc26/" target="_blank">GetYourGuide</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-icon" style="background:#f4f0fb">🎭</div>
+      <div class="card-body">
+        <div class="card-name">Bosphorus Dinner Cruise & Show (Day 11)</div>
+        <div class="card-detail">Farewell night — whirling dervish, live music, dinner. Book early, these sell out. Multiple operators on Viator.</div>
+        <div class="card-actions">
+          <a class="btn btn-book" href="https://www.viator.com/Istanbul-tours/Dinner-and-Show/d585-g6858" target="_blank">Book on Viator</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-icon" style="background:#fdf8ee">🎡</div>
+      <div class="card-body">
+        <div class="card-name">Legoland Discovery Centre (Day 7)</div>
+        <div class="card-detail">Forum Istanbul Mall, Bayrampaşa. Rides, 4D cinema, build zones. Kids under 3 may be free. Book online to skip queues.</div>
+        <div class="card-actions">
+          <a class="btn btn-book" href="https://www.legolanddiscoverycentre.com/istanbul/" target="_blank">Book tickets</a>
+          <a class="btn btn-map" href="https://maps.google.com/?q=Legoland+Discovery+Centre+Forum+Istanbul" target="_blank">Map</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-icon" style="background:#eff4fc">🏛️</div>
+      <div class="card-body">
+        <div class="card-name">Museum Pass Istanbul</div>
+        <div class="card-detail">Covers Hagia Sophia, Topkapi, Basilica Cistern & more. 5-day pass. Skip-the-line at most sites. Worth it for 9 people.</div>
+        <div class="card-actions">
+          <a class="btn btn-book" href="https://www.muze.gov.tr/en/museum-pass" target="_blank">Buy official pass</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-icon" style="background:#effbf2">🧵</div>
+      <div class="card-body">
+        <div class="card-name">Istanbul Experiences — Workshop (Day 7)</div>
+        <div class="card-detail">Turkish coffee reading, mosaic lamp, marbling. Book a session for the whole family. Central location near Galata.</div>
+        <div class="card-actions">
+          <a class="btn btn-book" href="https://www.istanbulexperiences.com" target="_blank">Book workshop</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-icon" style="background:#fdf1ef">🏊</div>
+      <div class="card-body">
+        <div class="card-name">Istanbul Aquarium (Day 10)</div>
+        <div class="card-detail">Indoor, AC, 1.5 hrs. Accessible for wheelchair. Near Florya beach. Book online to avoid queues on busy summer days.</div>
+        <div class="card-actions">
+          <a class="btn btn-book" href="https://www.istanbulaquarium.com" target="_blank">Book tickets</a>
+          <a class="btn btn-map" href="https://maps.google.com/?q=Istanbul+Aquarium" target="_blank">Map</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-icon" style="background:#edf5f3">⛪</div>
+      <div class="card-body">
+        <div class="card-name">Büyükada Ferry (Day 6)</div>
+        <div class="card-detail">Ferry from Kabataş terminal. Şehir Hatları — wheelchair accessible boats. No car on the island. Book return trip same day. Takes ~1.5 hrs each way.</div>
+        <div class="card-actions">
+          <a class="btn btn-book" href="https://www.sehirhatlari.istanbul/en" target="_blank">Ferry schedule</a>
+          <a class="btn btn-map" href="https://maps.google.com/?q=Kabatas+Ferry+Terminal+Istanbul" target="_blank">Kabataş terminal</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- EMERGENCY -->
+  <div class="section visible" data-cat="emergency">
+    <div class="section-title">Emergency Numbers</div>
+
+    <div class="emergency-card">
+      <div class="emergency-row">
+        <span class="emergency-label">Police</span>
+        <a class="emergency-num" href="tel:155">155</a>
+      </div>
+      <div class="emergency-row">
+        <span class="emergency-label">Ambulance</span>
+        <a class="emergency-num" href="tel:112">112</a>
+      </div>
+      <div class="emergency-row">
+        <span class="emergency-label">Fire</span>
+        <a class="emergency-num" href="tel:110">110</a>
+      </div>
+      <div class="emergency-row">
+        <span class="emergency-label">Tourist Police</span>
+        <a class="emergency-num" href="tel:+902125274503">+90 212 527 45 03</a>
+      </div>
+    </div>
+
+    <div class="section-title" style="margin-top:8px">Nearest Hospital</div>
+
+    <div class="card">
+      <div class="card-icon" style="background:#fdf1ef">🏥</div>
+      <div class="card-body">
+        <div class="card-name">Haseki Training & Research Hospital</div>
+        <div class="card-detail">Nearest public hospital to Fatih/Sultanahmet. 24hr A&E. Millet Cad., Fatih. Some English-speaking staff. Free for emergencies.</div>
+        <div class="card-actions">
+          <a class="btn btn-map" href="https://maps.google.com/?q=Haseki+Training+Research+Hospital+Fatih+Istanbul" target="_blank">Navigate</a>
+          <a class="btn btn-call" href="tel:+902125294400">Call hospital</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-icon" style="background:#eff4fc">🏨</div>
+      <div class="card-body">
+        <div class="card-name">American Hospital Istanbul</div>
+        <div class="card-detail">Private, English-speaking staff, international insurance accepted. Güzelbahçe Sk. No:20, Nişantaşı. Higher cost but best English care.</div>
+        <div class="card-actions">
+          <a class="btn btn-call" href="tel:+902123444444">Call</a>
+          <a class="btn btn-map" href="https://maps.google.com/?q=American+Hospital+Istanbul+Nisantasi" target="_blank">Map</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-title" style="margin-top:8px">Useful Contacts</div>
+
+    <div class="card">
+      <div class="card-icon" style="background:#effbf2">🇮🇳</div>
+      <div class="card-body">
+        <div class="card-name">Indian Consulate Istanbul</div>
+        <div class="card-detail">For passport issues, emergencies. Cumhuriyet Cad. No:2/3, Elmadağ. Open Mon–Fri 9AM–5PM.</div>
+        <div class="card-actions">
+          <a class="btn btn-call" href="tel:+902122969800">Call</a>
+          <a class="btn btn-map" href="https://maps.google.com/?q=Indian+Consulate+Istanbul" target="_blank">Map</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+function filter(cat) {
+  document.querySelectorAll('.cat-pill').forEach(p => p.classList.remove('active'));
+  event.target.classList.add('active');
+
+  document.querySelectorAll('.section[data-cat]').forEach(s => {
+    if (cat === 'all' || s.dataset.cat === cat) {
+      s.classList.add('visible');
+    } else {
+      s.classList.remove('visible');
+    }
+  });
+}
+</script>
+</body>
+</html>
